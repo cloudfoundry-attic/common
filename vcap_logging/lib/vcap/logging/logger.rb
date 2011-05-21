@@ -17,7 +17,6 @@ module VCAP
         #
         # @param  levels  Array[VCAP::Logging::LogLevel]  Log levels to use
         def define_log_levels(levels)
-
           @prev_log_methods ||= []
           # Clean up previously defined methods
           for meth_name in @prev_log_methods
