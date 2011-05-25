@@ -56,7 +56,7 @@ describe VCAP::Logging::Logger do
 
   describe '#log_record' do
     it 'should add records to configured sinks' do
-      rec = VCAP::Logging::LogRecord.new(0, 'foo', [])
+      rec = VCAP::Logging::LogRecord.new(0, 'foo', @logger, [])
       sinks = [mock(:sink1), mock(:sink2)]
       for s in sinks
         s.should_receive(:add_record).with(rec).once
@@ -66,9 +66,7 @@ describe VCAP::Logging::Logger do
     end
 
     it 'should forward records to parent loggers if no sinks are installed' do
-      rec = VCAP::Logging::LogRecord.new(0, 'foo', [])
       parent = mock(:parent_logger)
-      parent.should_receive(:log_record).with(rec).once
 
       child = VCAP::Logging::Logger.new('foo.bar')
       child.parent = parent
@@ -76,6 +74,8 @@ describe VCAP::Logging::Logger do
       grandchild = VCAP::Logging::Logger.new('foo.bar.baz')
       grandchild.parent = child
 
+      rec = VCAP::Logging::LogRecord.new(0, 'foo', grandchild, [])
+      parent.should_receive(:log_record).with(rec).once
       grandchild.send(:log_record, rec)
     end
   end

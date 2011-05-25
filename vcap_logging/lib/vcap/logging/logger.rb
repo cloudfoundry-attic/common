@@ -84,7 +84,7 @@ module VCAP
         return unless level.value >= @log_level.value
         data = yield if block_given?
 
-        log_record(VCAP::Logging::LogRecord.new(lvl_name, data, opts[:tags] || []))
+        log_record(VCAP::Logging::LogRecord.new(lvl_name, data, self, opts[:tags] || []))
       end
 
       # Logs a message to the configured sinks. This is analogous to the printf() family
@@ -100,7 +100,7 @@ module VCAP
         return unless level.value >= @log_level.value
         data = fmt % fmt_args
 
-        log_record(VCAP::Logging::LogRecord.new(lvl_name, data, opts[:tags] || []))
+        log_record(VCAP::Logging::LogRecord.new(lvl_name, data, self, opts[:tags] || []))
       end
 
       protected
