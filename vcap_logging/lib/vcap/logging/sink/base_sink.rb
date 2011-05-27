@@ -1,3 +1,5 @@
+require 'thread'
+
 require 'vcap/logging/log_record'
 
 module VCAP
@@ -17,6 +19,7 @@ module VCAP
         def initialize(formatter=nil)
           @formatter = formatter
           @opened    = false
+          @mutex     = Mutex.new
         end
 
         # Opens any underlying file descriptors, etc. and ensures that the sink
