@@ -71,6 +71,10 @@ module VCAP
         @loggers[name]
       end
 
+      def add_sink(*args)
+        @sink_map.add_sink(*args)
+      end
+
       # Sets the log level to _log_level_ for every logger whose name matches _path_regex_
       #
       # @param  path_regex      String  Regular expression to use when matching against the logger name
