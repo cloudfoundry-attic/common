@@ -2,6 +2,8 @@ require 'thread'
 
 require 'vcap/logging/log_record'
 
+require 'thread'
+
 module VCAP
   module Logging
     module Sink

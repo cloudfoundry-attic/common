@@ -1,0 +1,40 @@
+#!/usr/bin/env ruby
+# A very simple test script for logging to syslog
+#
+$LOAD_PATH.unshift(File.expand_path("../../lib", __FILE__))
+
+require 'optparse'
+
+require 'vcap/logging'
+
+opts = {
+  :level => :info,
+  :name  => 'test_syslog',
+}
+parser = OptionParser.new do |op|
+  op.banner = "Usage: test_syslog [opts] <message>"
+
+  op.on('-l [LEVEL]', '--level [LEVEL]', 'Foo') {|level| opts[:level] = level.to_sym }
+  op.on('-n [NAME]', '--name [NAME]', 'Bar') {|name| opts[:name] = name }
+
+end
+parser.parse!
+
+unless ARGV.length > 0
+  puts parser.help
+  exit 1
+end
+
+formatter = VCAP::Logging::Formatter::DelimitedFormatter.new do
+  timestamp
+  log_level
+  fiber_shortid
+  thread_shortid
+  process_id
+  data
+end
+sink = VCAP::Logging::Sink::SyslogSink.new(opts[:name], :formatter => formatter)
+VCAP::Logging.add_sink(nil, nil, sink)
+
+log = VCAP::Logging.logger('test')
+log.send(opts[:level], ARGV.join(' '))
