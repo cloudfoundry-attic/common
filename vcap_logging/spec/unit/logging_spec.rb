@@ -26,17 +26,17 @@ describe VCAP::Logging do
       VCAP::Logging.logger('foo.bar').should == logger
     end
 
-    it 'should set log level to the default for loggers with no parents' do
+    it 'should set log level to the default if no masks are present' do
       logger = VCAP::Logging.logger('foo.bar')
       logger.should_not be_nil
       logger.log_level.should == VCAP::Logging.default_log_level
     end
 
-    it 'should set the log level to that of its parent' do
-      VCAP::Logging.default_log_level = :warn
-      VCAP::Logging.logger('foo').log_level.should == :warn
-      VCAP::Logging.logger('foo').log_level = :info
-      VCAP::Logging.logger('foo.bar').log_level.should == :info
+    it 'should set log level to the most restrictive mask that matches' do
+      VCAP::Logging.set_log_level('.*', :debug)
+      VCAP::Logging.set_log_level('foo\..*', :fatal)
+      logger = VCAP::Logging.logger('foo.bar')
+      logger.log_level.should == :fatal
     end
   end
 
@@ -62,6 +62,14 @@ describe VCAP::Logging do
       for name, levels in level_map
         VCAP::Logging.logger(name).log_level.should == levels[1]
       end
+    end
+
+    it 'should reset loggers at a given level that no longer match to the default level' do
+      logger = VCAP::Logging.logger('foo.bar')
+      VCAP::Logging.set_log_level('foo.bar', :warn)
+      logger.log_level.should == :warn
+      VCAP::Logging.set_log_level('zazzle', :warn)
+      logger.log_level.should == VCAP::Logging.default_log_level
     end
   end
 
