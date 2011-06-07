@@ -46,7 +46,7 @@ module VCAP::Logging::Formatter
     end
 
     def data
-      @exprs << "log_record.data"
+      @exprs << "log_record.data.to_s.gsub(/\n/, '\\n')"
     end
 
     def tags
