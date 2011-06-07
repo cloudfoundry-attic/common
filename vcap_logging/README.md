@@ -25,11 +25,4 @@ and sockets).
 ### Logger
 
 Loggers are responsible for dispatching messages that need to be logged off to
-their appropriate sinks. They are arranged in a tree structure by name, such
-that log records flow from the leaves of the tree towards the root. The log
-record stops traversing the tree when it arrives at a logger that has been
-configured with a sink.
-
-### Trie
-
-Internally, a trie is used to manage the logger hierarchy.
+their appropriate sinks.

@@ -30,42 +30,38 @@ module VCAP
       #                     :delimiter         => String  Defines how names should be split in determining logger hierarchy
       #
       def init(opts={})
+        @delimiter     = opts[:delimiter]  || DEFAULT_DELIMITER
         @log_level_map = opts[:log_levels] || DEFAULT_LOG_LEVELS
-        @delimiter = opts[:delimiter]  || DEFAULT_DELIMITER
         if opts[:default_log_level]
           @default_log_level = opts[:default_log_level]
         else
-          # The middle level seems like a reasonable default for the root logger
+          # The middle level seems like a reasonable default level
           sorted_levels = @log_level_map.keys.sort {|a, b| @log_level_map[a] <=> @log_level_map[b] }
           @default_log_level = sorted_levels[sorted_levels.length / 2]
         end
 
         VCAP::Logging::Logger.define_log_levels(@log_level_map)
         @sink_map = VCAP::Logging::SinkMap.new(@log_level_map)
+        @log_level_filters = {}         # map of level => regex that specifies which loggers should be at that level
+        @sorted_log_level_filters = []  # [[level, filter]] sorted by level strictness, most strict first
         @loggers  = {}
       end
 
-      # Returns the logger associated with _name_. Creates one if it doesn't exist. The log level will be inherited
-      # from the parent logger.
+      # Returns the logger associated with _name_. Creates one if it doesn't exist. The log level is computed
+      # by checking the masks set using VCAP::Logging.set_log_level in order from most restrictive to
+      # least restrictive.
       #
       # @param  name  String  Logger name
       def logger(name)
         if !@loggers.has_key?(name)
           @loggers[name] = VCAP::Logging::Logger.new(name, @sink_map)
-
-          # Not super efficient, but since we're not explicitly storing the parent-child relationships we
-          # must brute force it.
-          log_level = @default_log_level
-          off = name.rindex(@delimiter)
-          while off != nil
-            substr = name[0, off]
-            if @loggers[substr]
-              log_level = @loggers[substr].log_level
+          @loggers[name].log_level = @default_log_level
+          for level, regex in @sorted_log_level_filters
+            if regex.match(name)
+              @loggers[name].log_level = level
               break
             end
-            off = off > 2 ? name.rindex(@delimiter, off - 1) : nil
           end
-          @loggers[name].log_level = log_level
         end
 
         @loggers[name]
@@ -75,7 +71,9 @@ module VCAP
         @sink_map.add_sink(*args)
       end
 
-      # Sets the log level to _log_level_ for every logger whose name matches _path_regex_
+      # Sets the log level to _log_level_ for every logger whose name matches _path_regex_. Loggers who
+      # were previously set to this level and whose names no longer match _path_regex_ are reset to
+      # the default level.
       #
       # @param  path_regex      String  Regular expression to use when matching against the logger name
       # @param  log_level_name  Symbol  Name of the log level to set on all matching loggers
@@ -85,13 +83,21 @@ module VCAP
         raise ArgumentError, "Unknown log level #{log_level_name}" unless @log_level_map[log_level_name]
         regex = Regexp.new("^#{path_regex}$")
 
+        @log_level_filters[log_level_name] = regex
+        @sorted_log_level_filters = @log_level_filters.keys.sort {|a, b| @log_level_map[a] <=> @log_level_map[b] }.map {|lvl| [lvl, @log_level_filters[lvl]] }
+
         for logger_name, logger in @loggers
-          logger.log_level = log_level_name if regex.match(logger_name)
+          if regex.match(logger_name)
+            logger.log_level = log_level_name
+          elsif logger.log_level == log_level_name
+            # Reset any loggers at the supplied level that no longer match
+            logger.log_level = @default_log_level
+          end
         end
       end
 
-    end
-  end
+    end # << self
+  end # VCAP::Logging
 end
 
 require 'vcap/logging/formatter'
