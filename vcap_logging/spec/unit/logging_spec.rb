@@ -1,5 +1,8 @@
 require File.join(File.dirname(__FILE__), '..', 'spec_helper')
 
+require 'fileutils'
+require 'tmpdir'
+
 require 'vcap/logging'
 
 describe VCAP::Logging do
@@ -65,4 +68,34 @@ describe VCAP::Logging do
     end
   end
 
+  describe '.setup_from_config' do
+    it 'should set the default log level if supplied with a level key' do
+      # Should handle both string/symbol keys
+      VCAP::Logging.setup_from_config(:level => 'debug')
+      VCAP::Logging.default_log_level.should == :debug
+
+      VCAP::Logging.setup_from_config('level' => 'warn')
+      VCAP::Logging.default_log_level.should == :warn
+    end
+
+    it 'should raise an exception if given an invalid level' do
+      lambda { VCAP::Logging.setup_from_config(:level => 'zazzle') }.should raise_error(ArgumentError)
+    end
+
+    it 'should add a file sink if given a file key' do
+      tmpdir = Dir.mktmpdir
+      File.directory?(tmpdir).should be_true
+
+      VCAP::Logging.should_receive(:add_sink).with(nil, nil, an_instance_of(VCAP::Logging::Sink::FileSink)).once
+      VCAP::Logging.setup_from_config('file' => File.join(tmpdir, 'test_file1'))
+
+      FileUtils.rm_rf(tmpdir)
+      File.directory?(tmpdir).should be_false
+    end
+
+    it 'should add a syslog sink if given a syslog key' do
+      VCAP::Logging.should_receive(:add_sink).with(nil, nil, an_instance_of(VCAP::Logging::Sink::SyslogSink)).once
+      VCAP::Logging.setup_from_config('syslog' => 'test1')
+    end
+  end
 end
