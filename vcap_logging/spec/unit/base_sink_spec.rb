@@ -16,4 +16,16 @@ describe VCAP::Logging::Sink::BaseSink do
       lambda { @sink.add_record(@rec) }.should raise_error(VCAP::Logging::Sink::UsageError)
     end
   end
+
+  describe '#autoflush' do
+    it 'should call flush after each add_record call if true' do
+      @sink.formatter = mock(:formatter)
+      @sink.formatter.should_receive(:format_record).with(@rec).and_return('foo')
+      @sink.should_receive(:write).with('foo')
+      @sink.should_receive(:flush)
+      @sink.open
+      @sink.autoflush = true
+      @sink.add_record(@rec)
+    end
+  end
 end

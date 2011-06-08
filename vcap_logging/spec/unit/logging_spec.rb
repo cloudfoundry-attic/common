@@ -4,7 +4,7 @@ require 'vcap/logging'
 
 describe VCAP::Logging do
   before :each do
-    VCAP::Logging.init
+    VCAP::Logging.reset
   end
 
   describe '.init' do

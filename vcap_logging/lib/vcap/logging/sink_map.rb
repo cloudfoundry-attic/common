@@ -1,3 +1,5 @@
+require 'set'
+
 module VCAP
   module Logging
     class SinkMap
@@ -42,6 +44,18 @@ module VCAP
         @sinks[level]
       end
 
+      def each_sink
+        raise "You must supply a block" unless block_given?
+
+        seen = Set.new
+        for level, sinks in @sinks
+          for sink in sinks
+            next if seen.include?(sink)
+            yield sink
+            seen.add(sink)
+          end
+        end
+      end
     end
   end
 end
