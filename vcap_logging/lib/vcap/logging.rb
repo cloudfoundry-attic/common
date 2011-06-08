@@ -8,9 +8,8 @@ require 'vcap/logging/version'
 
 module VCAP
   module Logging
-    DEFAULT_DELIMITER = '.'
 
-    DEFAULT_FORMATTER = VCAP::Logging::Formatter::DelimitedFormatter.new do
+    FORMATTER = VCAP::Logging::Formatter::DelimitedFormatter.new do
       timestamp '%s'
       log_level
       tags
@@ -19,8 +18,9 @@ module VCAP
       data
     end
 
-    DEFAULT_LOG_LEVELS = {
-      :fatal  => 0,
+    LOG_LEVELS = {
+      :off    => 0,
+      :fatal  => 1,
       :error  => 5,
       :warn   => 10,
       :info   => 15,
@@ -31,32 +31,36 @@ module VCAP
 
     class << self
 
-      attr_accessor :default_log_level
-      attr_reader   :log_level_map
-      attr_reader   :sink_map
+      attr_reader :default_log_level
 
-      # Sets up the logging infrastructure
-      #
-      # @param  opts  Hash  :log_levels        => Hash    log-levels along with their names
-      #                     :default_log_level => Symbol  The log level to use if the logger has no parent in the hierarchy
-      #                     :delimiter         => String  Defines how names should be split in determining logger hierarchy
-      #
-      def init(opts={})
-        @delimiter     = opts[:delimiter]  || DEFAULT_DELIMITER
-        @log_level_map = opts[:log_levels] || DEFAULT_LOG_LEVELS
-        if opts[:default_log_level]
-          @default_log_level = opts[:default_log_level]
-        else
-          # The middle level seems like a reasonable default level
-          sorted_levels = @log_level_map.keys.sort {|a, b| @log_level_map[a] <=> @log_level_map[b] }
-          @default_log_level = sorted_levels[sorted_levels.length / 2]
+      def init
+        fail "init() can only be called once" if @initialized
+        VCAP::Logging::Logger.define_log_levels(LOG_LEVELS)
+        reset
+
+        # Ideally we would call close() on each sink. Unfortunatley, we can't be sure
+        # that close runs last, and that other at_exit handlers aren't attempting to
+        # log to a sink. The best we can do is enable autoflushing.
+        at_exit do
+          @sink_map.each_sink {|s| s.autoflush = true }
         end
 
-        VCAP::Logging::Logger.define_log_levels(@log_level_map)
-        @sink_map = VCAP::Logging::SinkMap.new(@log_level_map)
-        @log_level_filters = {}         # map of level => regex that specifies which loggers should be at that level
-        @sorted_log_level_filters = []  # [[level, filter]] sorted by level strictness, most strict first
+        @initialized = true
+      end
+
+      # Exists primarily for testing
+      def reset
+        @default_log_level = pick_default_level(LOG_LEVELS)
+        @sink_map = VCAP::Logging::SinkMap.new(LOG_LEVELS)
+        @log_level_filters = {}
+        @sorted_log_level_filters = []
         @loggers  = {}
+      end
+
+      def default_log_level=(log_level_name)
+        log_level_name = log_level_name.to_sym if log_level_name.kind_of?(String)
+        raise ArgumentError, "Unknown level #{log_level_name}" unless LOG_LEVELS[log_level_name]
+        @default_log_level = log_level_name
       end
 
       # Configures the logging infrastructure using a hash parsed from a config file.
@@ -75,23 +79,22 @@ module VCAP
         level = config[:level] || config['level']
         if level
           level_sym = level.to_sym
-          raise ArgumentError, "Unknown level: #{level}" unless @log_level_map[level_sym]
+          raise ArgumentError, "Unknown level: #{level}" unless LOG_LEVELS[level_sym]
           @default_log_level = level_sym
         end
 
         logfile = config[:file] || config['file']
-        add_sink(nil, nil, VCAP::Logging::Sink::FileSink.new(logfile, DEFAULT_FORMATTER, :buffer_size => 512)) if logfile
+        add_sink(nil, nil, VCAP::Logging::Sink::FileSink.new(logfile, FORMATTER, :buffer_size => 512)) if logfile
 
         syslog_name = config[:syslog] || config['syslog']
-        add_sink(nil, nil, VCAP::Logging::Sink::SyslogSink.new(syslog_name, :formatter => DEFAULT_FORMATTER)) if syslog_name
+        add_sink(nil, nil, VCAP::Logging::Sink::SyslogSink.new(syslog_name, :formatter => FORMATTER)) if syslog_name
 
         # Log to stdout if no other sinks are supplied
-        add_sink(nil, nil, VCAP::Logging::Sink::StdioSink.new(STDOUT, DEFAULT_FORMATTER)) unless (logfile || syslog_name)
+        add_sink(nil, nil, VCAP::Logging::Sink::StdioSink.new(STDOUT, FORMATTER)) unless (logfile || syslog_name)
       end
 
-      # Returns the logger associated with _name_. Creates one if it doesn't exist. The log level is computed
-      # by checking the masks set using VCAP::Logging.set_log_level in order from most restrictive to
-      # least restrictive.
+      # Returns the logger associated with _name_. Creates one if it doesn't exist. The log level will be inherited
+      # from the parent logger.
       #
       # @param  name  String  Logger name
       def logger(name)
@@ -122,11 +125,11 @@ module VCAP
       def set_log_level(path_regex, log_level_name)
         log_level_name = log_level_name.to_sym if log_level_name.kind_of?(String)
 
-        raise ArgumentError, "Unknown log level #{log_level_name}" unless @log_level_map[log_level_name]
+        raise ArgumentError, "Unknown log level #{log_level_name}" unless LOG_LEVELS[log_level_name]
         regex = Regexp.new("^#{path_regex}$")
 
         @log_level_filters[log_level_name] = regex
-        @sorted_log_level_filters = @log_level_filters.keys.sort {|a, b| @log_level_map[a] <=> @log_level_map[b] }.map {|lvl| [lvl, @log_level_filters[lvl]] }
+        @sorted_log_level_filters = @log_level_filters.keys.sort {|a, b| LOG_LEVELS[a] <=> LOG_LEVELS[b] }.map {|lvl| [lvl, @log_level_filters[lvl]] }
 
         for logger_name, logger in @loggers
           if regex.match(logger_name)
@@ -138,8 +141,16 @@ module VCAP
         end
       end
 
+      private
+
+      # The middle level seems like a reasonable default
+      def pick_default_level(level_map)
+        sorted_levels = level_map.keys.sort {|a, b| level_map[a] <=> level_map[b] }
+        sorted_levels[sorted_levels.length / 2]
+      end
+
     end # << self
-  end # VCAP::Logging
+  end   # VCAP::Logging
 end
 
 VCAP::Logging.init

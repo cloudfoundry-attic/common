@@ -16,11 +16,13 @@ module VCAP
       class BaseSink
         attr_reader   :opened
         attr_accessor :formatter
+        attr_accessor :autoflush
 
         def initialize(formatter=nil)
           @formatter = formatter
           @opened    = false
           @mutex     = Mutex.new
+          @autoflush = false
         end
 
         # Opens any underlying file descriptors, etc. and ensures that the sink
@@ -47,6 +49,7 @@ module VCAP
 
           message = @formatter.format_record(log_record)
           write(message)
+          flush if @autoflush
         end
 
         # Flushes any log records that may have been buffered in memory

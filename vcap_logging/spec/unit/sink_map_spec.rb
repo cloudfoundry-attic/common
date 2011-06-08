@@ -50,4 +50,15 @@ describe VCAP::Logging::SinkMap do
     end
 
   end
+
+  describe '#each_sink' do
+    it 'maps over each sink only once' do
+      sink_map = VCAP::Logging::SinkMap.new(@level_map)
+      sink_map.add_sink(nil, nil, 'foo')
+      sink_map.add_sink(:info, :info, 'bar')
+      sinks = []
+      sink_map.each_sink {|s| sinks << s }
+      sinks.should == ['foo', 'bar']
+    end
+  end
 end

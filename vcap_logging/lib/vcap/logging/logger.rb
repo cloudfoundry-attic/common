@@ -28,17 +28,29 @@ module VCAP
           @log_levels       = {}
 
           # Partially evaluate log/logf for the level specified by each name
-          # 1.8.7 doesn't have optional block arguments, hence the use of class_eval() instead of define_method()
           for name, level in levels
             @log_levels[name] = LogLevel.new(name, level)
 
-            class_eval("def #{name}(data, opts={}); log(:#{name}, data, opts); end")
+            define_log_helper(name)
             @prev_log_methods << name
 
-            name_f = name.to_s + 'f'
-            class_eval("def #{name_f}(fmt, fmt_args, opts={}); logf(:#{name}, fmt, fmt_args, opts); end")
-            @prev_log_methods << name_f.to_sym
+            name_f = "#{name}f".to_sym
+            define_logf_helper(name_f, name)
+            @prev_log_methods << name_f
           end
+        end
+
+        private
+
+        # Helper methods for defining helper methods (look out, you might be getting incepted...)
+        # Needed in order to create a new scope when binding level to the blocks
+
+        def define_log_helper(level)
+          define_method(level) {|*args| log(level, *args) }
+        end
+
+        def define_logf_helper(name, level)
+          define_method(name) {|*args| logf(level, *args) }
         end
 
       end

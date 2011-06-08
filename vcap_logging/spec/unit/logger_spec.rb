@@ -128,8 +128,8 @@ describe VCAP::Logging::Logger do
       fmt  = '%s'
       data = 'foo'
       for name in @levels.keys
-        @logger.should_receive(:log).with(name, data, {}).once
-        @logger.should_receive(:logf).with(name, fmt, [data], {}).once
+        @logger.should_receive(:log).with(name, data).once
+        @logger.should_receive(:logf).with(name, fmt, [data]).once
 
         @logger.send(name, data)
         name_f = name.to_s + 'f'
