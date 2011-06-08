@@ -1,11 +1,23 @@
-require 'thread'
+require 'vcap/logging/error'
+require 'vcap/logging/formatter'
+require 'vcap/logging/log_record'
+require 'vcap/logging/logger'
+require 'vcap/logging/sink'
+require 'vcap/logging/sink_map'
+require 'vcap/logging/version'
 
 module VCAP
   module Logging
-
-    class LoggingError < StandardError; end
-
     DEFAULT_DELIMITER = '.'
+
+    DEFAULT_FORMATTER = VCAP::Logging::Formatter::DelimitedFormatter.new do
+      timestamp '%s'
+      log_level
+      tags
+      process_id
+      thread_id
+      data
+    end
 
     DEFAULT_LOG_LEVELS = {
       :fatal  => 0,
@@ -45,6 +57,36 @@ module VCAP
         @log_level_filters = {}         # map of level => regex that specifies which loggers should be at that level
         @sorted_log_level_filters = []  # [[level, filter]] sorted by level strictness, most strict first
         @loggers  = {}
+      end
+
+      # Configures the logging infrastructure using a hash parsed from a config file.
+      # The config file is expected to contain a section with the following format:
+      # logging:
+      #    level: <default_log_level>
+      #     file: <filename>
+      #   syslog: <program name to use with the syslog sink>
+      #
+      # This interface is limiting, but it should satisfy the majority of our use cases.
+      # I'm imagining usage will be something like:
+      #   config = YAML.load(<file>)
+      #   ...
+      #   VCAP::Logging.setup_from_config(config[:logging])
+      def setup_from_config(config={})
+        level = config[:level] || config['level']
+        if level
+          level_sym = level.to_sym
+          raise ArgumentError, "Unknown level: #{level}" unless @log_level_map[level_sym]
+          @default_log_level = level_sym
+        end
+
+        logfile = config[:file] || config['file']
+        add_sink(nil, nil, VCAP::Logging::Sink::FileSink.new(logfile, DEFAULT_FORMATTER, :buffer_size => 512)) if logfile
+
+        syslog_name = config[:syslog] || config['syslog']
+        add_sink(nil, nil, VCAP::Logging::Sink::SyslogSink.new(syslog_name, :formatter => DEFAULT_FORMATTER)) if syslog_name
+
+        # Log to stdout if no other sinks are supplied
+        add_sink(nil, nil, VCAP::Logging::Sink::StdioSink.new(STDOUT, DEFAULT_FORMATTER)) unless (logfile || syslog_name)
       end
 
       # Returns the logger associated with _name_. Creates one if it doesn't exist. The log level is computed
@@ -99,12 +141,5 @@ module VCAP
     end # << self
   end # VCAP::Logging
 end
-
-require 'vcap/logging/formatter'
-require 'vcap/logging/log_record'
-require 'vcap/logging/logger'
-require 'vcap/logging/sink'
-require 'vcap/logging/sink_map'
-require 'vcap/logging/version'
 
 VCAP::Logging.init

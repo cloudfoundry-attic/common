@@ -1,8 +1,7 @@
 require 'thread'
 
+require 'vcap/logging/error'
 require 'vcap/logging/log_record'
-
-require 'thread'
 
 module VCAP
   module Logging
