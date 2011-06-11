@@ -87,8 +87,10 @@ module VCAP
 
         return unless level.value <= @log_level.value
         data = yield if block_given?
+        tags = opts[:tags] || []
+        tags << :exception if data.kind_of?(Exception)
 
-        rec = VCAP::Logging::LogRecord.new(lvl_name, data, self, opts[:tags] || [])
+        rec = VCAP::Logging::LogRecord.new(lvl_name, data, self, tags)
         @sink_map.get_sinks(lvl_name).each {|s| s.add_record(rec) }
       end
 

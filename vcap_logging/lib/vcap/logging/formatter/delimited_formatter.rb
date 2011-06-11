@@ -32,9 +32,9 @@ module VCAP::Logging::Formatter
 
       # Build the format string to that will generate the message along with
       # the arguments
-      fmt_chars = (0...@exprs.length).map {|x| '%s' }
-      fmt       = fmt_chars.join(delim)
-      fmt_args  = @exprs.join(', ')
+      fmt_chars = @exprs.map {|e| e[0] }
+      fmt       = fmt_chars.join(delim) + "\n"
+      fmt_args  = @exprs.map {|e| e[1] }.join(', ')
 
       instance_eval("def format_record(log_record); '#{fmt}' % [#{fmt_args}]; end")
     end
@@ -42,39 +42,53 @@ module VCAP::Logging::Formatter
     private
 
     def log_level
-      @exprs << "log_record.log_level.to_s.upcase"
+      @exprs << ['%6s', "log_record.log_level.to_s.upcase"]
     end
 
     def data
-      @exprs << "log_record.data.to_s.gsub(/\n/, '\\n')"
+      # Not sure of a better way to do this...
+      # If we are given an exception, include the class name, string representation, and stacktrace
+      snippet = "(log_record.data.kind_of?(Exception) ? " \
+                + "log_record.data.class.to_s + '(\"' + log_record.data.to_s + '\", [' + (log_record.data.backtrace ? log_record.data.backtrace.join(',') : '') + '])'" \
+                + ": log_record.data.to_s" \
+                + ").gsub(/\n/, '\\n')"
+      @exprs << ['%s', snippet]
     end
 
     def tags
-      @exprs << "log_record.tags.join(',')"
+      @exprs << ['%s', "log_record.tags.empty? ? '-': log_record.tags.join(',')"]
     end
 
     def fiber_id
-      @exprs << "log_record.fiber_id"
+      @exprs << ['%s', "log_record.fiber_id"]
     end
 
     def fiber_shortid
-      @exprs << "log_record.fiber_shortid"
+      @exprs << ['%s', "log_record.fiber_shortid"]
     end
 
     def process_id
-      @exprs << "log_record.process_id"
+      @exprs << ['%s', "log_record.process_id"]
     end
 
     def thread_id
-      @exprs << "log_record.thread_id"
+      @exprs << ['%s', "log_record.thread_id"]
     end
 
     def thread_shortid
-      @exprs << "log_record.thread_shortid"
+      @exprs << ['%s', "log_record.thread_shortid"]
     end
 
     def timestamp(fmt=DEFAULT_TIMESTAMP_FORMAT)
-      @exprs << "log_record.timestamp.strftime('#{fmt}')"
+      @exprs << ['%s', "log_record.timestamp.strftime('#{fmt}')"]
+    end
+
+    def logger_name
+      @exprs << ['%s', "log_record.logger_name"]
+    end
+
+    def text(str)
+      @exprs << ['%s', "'#{str}'"]
     end
 
   end

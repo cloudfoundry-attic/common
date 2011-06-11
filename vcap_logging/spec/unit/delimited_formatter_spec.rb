@@ -22,13 +22,23 @@ describe VCAP::Logging::Formatter::DelimitedFormatter do
         data
       end
 
-      fmt.format_record(rec).should == [rec.timestamp.strftime('%s'), 'DEBUG', 'bar,baz', rec.process_id.to_s, rec.thread_id.to_s, 'foo'].join('.')
+      fmt.format_record(rec).should == [rec.timestamp.strftime('%s'), ' DEBUG', 'bar,baz', rec.process_id.to_s, rec.thread_id.to_s, 'foo'].join('.') + "\n"
     end
 
     it 'should encode newlines' do
       rec = VCAP::Logging::LogRecord.new(:debug, "test\ning123\n\n", VCAP::Logging::Logger.new('foo', nil), [])
       fmt = VCAP::Logging::Formatter::DelimitedFormatter.new('.') { data }
-      fmt.format_record(rec).should == 'test\ning123\n\n'
+      fmt.format_record(rec).should == "test\\ning123\\n\\n\n"
+    end
+
+    it 'should format exceptions' do
+      begin
+        raise StandardError, "Testing 123"
+      rescue => exc
+      end
+      rec = VCAP::Logging::LogRecord.new(:error, exc, VCAP::Logging::Logger.new('foo', nil), [])
+      fmt = VCAP::Logging::Formatter::DelimitedFormatter.new('.') { data }
+      fmt.format_record(rec).should == "StandardError(\"Testing 123\", [#{exc.backtrace.join(',')}])\n"
     end
   end
 end

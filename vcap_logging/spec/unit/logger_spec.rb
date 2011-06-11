@@ -97,6 +97,13 @@ describe VCAP::Logging::Logger do
       @logger.log(:debug) { block_called = true; 'foo' }
       block_called.should be_false
     end
+
+    it "should add an 'exception' tag when data is a kind of Exception" do
+      @logger.log_level = :info
+      ex = StandardError.new("Testing 123")
+      VCAP::Logging::LogRecord.should_receive(:new).with(:info, ex, @logger, [:exception])
+      @logger.info(ex)
+    end
   end
 
   describe '#logf' do

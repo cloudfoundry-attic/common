@@ -10,11 +10,14 @@ module VCAP
   module Logging
 
     FORMATTER = VCAP::Logging::Formatter::DelimitedFormatter.new do
-      timestamp '%s'
-      log_level
+      timestamp '[%F %T]'
+      logger_name
       tags
       process_id
-      thread_id
+      thread_shortid
+      fiber_shortid
+      log_level
+      text '--'
       data
     end
 
