@@ -39,6 +39,11 @@ module VCAP
           @opened = false
         end
 
+        def autoflush=(should_autoflush)
+          @autoflush = should_autoflush
+          flush if @autoflush
+        end
+
         # Formats the log record using the configured formatter and
         # NB: Depending on the implementation of write(), this may buffer the record in memory.
         #

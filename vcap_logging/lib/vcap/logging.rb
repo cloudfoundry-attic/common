@@ -87,7 +87,8 @@ module VCAP
         end
 
         logfile = config[:file] || config['file']
-        add_sink(nil, nil, VCAP::Logging::Sink::FileSink.new(logfile, FORMATTER, :buffer_size => 512)) if logfile
+        # Undecided as to whether or not we should enable buffering here. For now, don't buffer to stay consistent with the current logger.
+        add_sink(nil, nil, VCAP::Logging::Sink::FileSink.new(logfile, FORMATTER)) if logfile
 
         syslog_name = config[:syslog] || config['syslog']
         add_sink(nil, nil, VCAP::Logging::Sink::SyslogSink.new(syslog_name, :formatter => FORMATTER)) if syslog_name
