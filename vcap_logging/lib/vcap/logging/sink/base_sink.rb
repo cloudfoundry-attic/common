@@ -30,13 +30,13 @@ module VCAP
         #
         # This MUST be called before any calls to add_record().
         def open
-          @opened = true
+          @mutex.synchronize { @opened = true }
         end
 
         # Closes any underlying file descriptors and ensures that any log records
         # buffered in memory are flushed.
         def close
-          @opened = false
+          @mutex.synchronize { @opened = false }
         end
 
         def autoflush=(should_autoflush)

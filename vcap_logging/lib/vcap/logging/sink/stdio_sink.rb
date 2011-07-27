@@ -10,22 +10,7 @@ module VCAP::Logging::Sink
     def initialize(io, formatter=nil)
       super(formatter)
       @io  = io
-      @out = nil
       open
-    end
-
-    def open
-      @mutex.synchronize do
-        @opened = true
-        @out = @io
-      end
-    end
-
-    def close
-      @mutex.synchronize do
-        @opened = false
-        @out = nil
-      end
     end
 
     private
