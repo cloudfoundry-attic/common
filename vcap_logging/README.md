@@ -9,6 +9,25 @@ borrows heavily in its structure from the 'logging' gem.
 - Compatible with both ruby18 and ruby19
 - Well tested.
 
+## Usage
+
+This will cover the most common use case: initializing the logging framework once at startup
+and using loggers throughout your script.
+
+    # Sample config hash, typically loaded from a config file
+    cfg = {
+      'level'  => 'debug',
+      'file'   => '/tmp/foo.log',
+      'syslog' => 'my_logging_example',
+    }
+
+    # Initialize the logging framework
+    VCAP::Logging.setup_from_config(cfg)
+
+    # Start logging!
+    logger = VCAP::Logging.logger('foo.bar.baz')
+    logger.debug("Hello world!")
+
 ## Core Classes
 
 ### Formatter
