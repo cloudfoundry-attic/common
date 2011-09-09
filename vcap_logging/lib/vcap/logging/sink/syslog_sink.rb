@@ -38,7 +38,7 @@ module VCAP::Logging::Sink
     def open
       @mutex.synchronize do
         unless @opened
-          @syslog = Syslog.open(@prog_name, Syslog::LOG_CONS | Syslog::LOG_PID, Syslog::LOG_USER)
+          @syslog = Syslog.open(@prog_name, Syslog::LOG_PID, Syslog::LOG_USER)
           @opened = true
         end
       end
