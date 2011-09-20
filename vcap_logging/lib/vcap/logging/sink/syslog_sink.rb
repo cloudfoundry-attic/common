@@ -59,9 +59,8 @@ module VCAP::Logging::Sink
       raise UsageError, "You must supply a formatter" unless @formatter
 
       message = @formatter.format_record(log_record)
-
       pri = @log_level_map[log_record.log_level]
-      @mutex.synchronize { @syslog.log(pri, message) }
+      @mutex.synchronize { @syslog.log(pri, '%s', message) }
     end
 
   end

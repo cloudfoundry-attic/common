@@ -15,7 +15,7 @@ describe VCAP::Logging::Sink::SyslogSink do
     fmt = mock(:test_formatter)
     fmt.should_receive(:format_record).with(any_args()).and_return(msg)
     Syslog.should_receive(:open).with('test', Syslog::LOG_PID, Syslog::LOG_USER).and_return(Syslog)
-    Syslog.should_receive(:log).with(Syslog::LOG_INFO, msg).and_return(nil)
+    Syslog.should_receive(:log).with(Syslog::LOG_INFO, '%s', msg).and_return(nil)
     sink = VCAP::Logging::Sink::SyslogSink.new('test')
     sink.formatter = fmt
     sink.add_record(rec)
