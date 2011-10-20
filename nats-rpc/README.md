@@ -50,7 +50,7 @@ The three types of calls where `nats-rpc` can help out are as follows:
 ## Service implementation
 
 Service code should be shared between the client and server processes. It acts
-as a kind of contract between the client and server as to what methods can be
+as a contract between the client and server as to what methods can be
 called, and how these requests are routed through NATS.
 
 ```ruby
@@ -61,8 +61,11 @@ class MyService < NATS::RPC::Service
 
   # Exported methods take a request object. To send back a reply for this
   # request, the #reply method on the request object should be used.
+  #
   # The arguments for the request as passed by the caller can be accessed
-  # using the #payload method on the request object.
+  # using the #payload method on the request object. The return value of this
+  # method is deserialized JSON, where the argument that is sent by the client
+  # is serialized using JSON.
 
   def my_method(request)
     request.reply(request.payload)
@@ -126,8 +129,9 @@ the request. Using the option hash, it is possible to override the default
 request timeout.
 
 The object that is returned from this call represents the request, and one can
-register blocks of code to be registered to execute whenever a reply is received, or the request times out.
-Typical usage looks like the following snippet:
+register blocks of code to be registered to execute whenever a reply is
+received, or the request times out.  Typical usage looks like the following
+snippet:
 
 ```ruby
 request = client.call("remote-peer", "my_method", "hello!", :timeout => 1)
