@@ -141,7 +141,7 @@ module NATS
         # All requests should finish sometime... Requests without a timeout
         # otherwise hang around in the client's registry forever, unless
         # explicitly unregistered by the user.
-        DEFAULT_TIMEOUT = 5
+        DEFAULT_TIMEOUT = 30
 
         attr_accessor :timeout
 
