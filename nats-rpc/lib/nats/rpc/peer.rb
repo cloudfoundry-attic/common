@@ -7,6 +7,7 @@ module NATS
       attr_reader :nats
       attr_reader :service
       attr_reader :options
+      attr_reader :logger
 
       def initialize(nats, service, options = {})
         service_base_class = NATS::RPC::Service
@@ -17,6 +18,7 @@ module NATS
         @nats = nats
         @service = service
         @options = options
+        @logger = options[:logger]
 
         post_initialize
       end
@@ -40,16 +42,17 @@ module NATS
 
       # Proxy to NATS.
       def publish(subject, message)
-        #puts "Publishing to #{subject}: #{message.inspect}"
-        nats.publish(subject, JSON.generate(message))
+        json = JSON.generate(message)
+        logger.debug("Publishing to #{subject}: #{json}") if logger
+        nats.publish(subject, json)
       end
 
       # Proxy to NATS.
       def subscribe(subject, &blk)
-        #puts "Subscribing to #{subject}"
-        nats.subscribe(subject) do |message|
-          #puts "Received message on #{subject}: #{message}"
-          blk.call(JSON.parse(message))
+        logger.debug("Subscribing to #{subject}") if logger
+        nats.subscribe(subject) do |json|
+          logger.debug("Received message on #{subject}: #{json}") if logger
+          blk.call(JSON.parse(json))
         end
       end
     end

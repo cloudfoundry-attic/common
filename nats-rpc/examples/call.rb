@@ -1,3 +1,4 @@
+require "logger"
 require "nats/rpc/service"
 
 class MathService < NATS::RPC::Service
@@ -19,7 +20,9 @@ when "client"
 
   EM.run do
     nats = NATS.connect
-    client = NATS::RPC::Client.new(nats, MathService.new)
+    logger = Logger.new(STDOUT)
+    logger.level = Logger::DEBUG
+    client = NATS::RPC::Client.new(nats, MathService.new, :logger => logger)
 
     # Find out which peers are available
     client.mcall("ping") do |request, reply|
@@ -39,7 +42,9 @@ when "server"
 
   EM.run do
     nats = NATS.connect
-    server = NATS::RPC::Server.new(nats, MathService.new)
+    logger = Logger.new(STDOUT)
+    logger.level = Logger::DEBUG
+    server = NATS::RPC::Server.new(nats, MathService.new, :logger => logger)
   end
 
 else
