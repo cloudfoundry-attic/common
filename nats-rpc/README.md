@@ -97,14 +97,14 @@ it merely calls the implemented methods when it receives requests to do so.
 ```ruby
 EM.run do
   nats = NATS.connect
-  server = NATS::RPC::Server.new(nats, MyService.new, :peername => "my_unique_id")
+  server = NATS::RPC::Server.new(nats, MyService.new, :peer_name => "my_unique_name")
 end
 ```
 
 The peer name that is used by default is equal to the combination of the
 hostname of the server and the PID of the Ruby process. When multiple services
 are exported by creating multiple `NATS::RPC::Server` instances, it is
-generally a good idea to have them use the *same peer name. This allows a
+generally a good idea to have them use the same peer name. This allows a
 caller of *ServiceA* to use that peer name to call a remote method on
 *ServiceB*.
 
@@ -116,7 +116,7 @@ instance of the service that it intends to call.
 ```ruby
 EM.run do
   nats = NATS.connect
-  client = NATS::RPC::Client.new(nats, MyService.new)
+  client = NATS::RPC::Client.new(nats, MyService.new, :peer_name => "my_unique_name")
 end
 ```
 
@@ -134,7 +134,7 @@ received, or the request times out.  Typical usage looks like the following
 snippet:
 
 ```ruby
-request = client.call("remote-peer", "my_method", "hello!", :timeout => 1)
+request = client.call("remote_peer_id", "my_method", "hello!", :timeout => 1)
 request.execute!
 
 request.on("reply") do |reply|
@@ -184,7 +184,7 @@ back to the caller. It is raised when the `#result` method on the reply object
 is called. This can be avoided using a standard `begin`/`rescue` block.
 
 ```ruby
-request = client.call("remote-peer", "my_error_method")
+request = client.call("remote_peer_id", "my_error_method")
 request.execute!
 
 request.on("reply") do |reply|

@@ -6,7 +6,7 @@ module NATS
     class Client < Peer
 
       def post_initialize
-        subscribe("rpc.inbox.#{peername}") do |message|
+        subscribe(base_subject + ".inbox.#{peer_id}") do |message|
           request = @registry[message["message_id"]]
 
           if request
@@ -33,9 +33,9 @@ module NATS
         @registry.has_key?(request.message_id)
       end
 
-      def call(peer, method, payload = nil, options = {}, &blk)
+      def call(peer_id, method, payload = nil, options = {}, &blk)
         request = Call.new(self, method, payload, options)
-        request.peer = peer
+        request.peer_id = peer_id
         request.shortcut!(&blk) if blk
         request
       end
@@ -94,7 +94,7 @@ module NATS
         # Construct minimal message for this request.
         def message
           { "message_id" => message_id,
-            "peername" => client.peername,
+            "peer_id" => client.peer_id,
             "method" => @method.name,
             "payload" => @payload }
         end
@@ -201,11 +201,11 @@ module NATS
 
       class Call < ExpectReplyRequest
 
-        attr_accessor :peer
+        attr_accessor :peer_id
 
         def execute!
           prepare_execute
-          client.publish(generate_subject("call", peer), message)
+          client.publish(generate_subject("call", peer_id), message)
 
           # Unregister after receiving the first reply.
           on("reply") {
@@ -235,7 +235,7 @@ module NATS
         attr_reader :message_id
 
         # Meta
-        attr_reader :peername
+        attr_reader :peer_id
 
         def initialize(request, message)
           @request = request
@@ -246,8 +246,8 @@ module NATS
           @message["message_id"]
         end
 
-        def peername
-          @message["peername"]
+        def peer_id
+          @message["peer_id"]
         end
 
         def result

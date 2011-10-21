@@ -5,7 +5,7 @@ module NATS
     class Server < Peer
 
       def post_initialize
-        subscribe(base_subject + ".call.#{peername}") do |message|
+        subscribe(base_subject + ".call.#{peer_id}") do |message|
           handle(message)
         end
         subscribe(base_subject + ".mcall") do |message|
@@ -34,8 +34,8 @@ module NATS
           @message["message_id"]
         end
 
-        def peername
-          @message["peername"]
+        def peer_id
+          @message["peer_id"]
         end
 
         def method
@@ -68,9 +68,9 @@ module NATS
         protected
 
         def _reply(message)
-          server.publish("rpc.inbox.#{peername}", message.merge({
+          server.publish(server.base_subject + ".inbox.#{peer_id}", message.merge({
             "message_id" => message_id,
-            "peername" => server.peername
+            "peer_id" => server.peer_id
           }))
         end
       end

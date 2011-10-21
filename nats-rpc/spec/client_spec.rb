@@ -11,6 +11,12 @@ class ClientSpecService < NATS::RPC::Service
     request.reply(request.payload)
   end
 
+  export :echo_twice
+  def echo_twice(request)
+    request.reply(request.payload)
+    request.reply(request.payload)
+  end
+
   export :error
   def error(request)
     raise ClientSpecError.new
@@ -34,25 +40,24 @@ end
 describe NATS::RPC::Client do
   include_context :nats
 
-  def start_server(name = "server")
-    NATS::RPC::Server.new(nats, ClientSpecService.new, :peername => name)
+  def start_server
+    NATS::RPC::Server.new(nats, ClientSpecService.new, :peer_name => "server")
   end
 
-  def client(name = "client")
-    @clients ||= {}
-    @clients[name] = NATS::RPC::Client.new(nats, ClientSpecService.new, :peername => name)
+  let(:client) do
+    NATS::RPC::Client.new(nats, ClientSpecService.new, :peer_name => "client")
   end
 
   context "call" do
     it "should be received and processed by a single remote" do
       em do
-        server1 = start_server("server1")
-        server2 = start_server("server2")
+        server1 = start_server
+        server2 = start_server
 
-        request = client.call("server1", "echo", "Hi there!")
+        request = client.call(server1.peer_id, "echo", "Hi there!")
         request.on("reply") do |reply|
           reply.result.should eq("Hi there!")
-          reply.peername.should eq("server1")
+          reply.peer_id.should eq(server1.peer_id)
           done
         end
 
@@ -62,9 +67,9 @@ describe NATS::RPC::Client do
 
     it "should raise errors triggered on the remote" do
       em do
-        start_server
+        server = start_server
 
-        request = client.call("server", "error")
+        request = client.call(server.peer_id, "error")
         request.execute!
 
         request.on("reply") do |reply|
@@ -78,11 +83,10 @@ describe NATS::RPC::Client do
 
     it "should only emit a reply once" do
       em do
-        # These two servers will both reply to the regular call
-        server1 = start_server("server")
-        server2 = start_server("server")
+        server = start_server
 
-        request = client.call("server", "echo", "Hi there!")
+        # This call emits two replies
+        request = client.call(server.peer_id, "echo_twice", "Hi there!")
         request.execute!
         request.should be_registered
 
@@ -101,9 +105,9 @@ describe NATS::RPC::Client do
 
     it "should take a block for setting up a shortcut" do
       em do
-        start_server
+        server = start_server
 
-        client.call("server", "echo", "Hi there!") do |request, reply|
+        client.call(server.peer_id, "echo", "Hi there!") do |request, reply|
           reply.should_not == nil
           reply.result.should == "Hi there!"
           done
@@ -113,9 +117,9 @@ describe NATS::RPC::Client do
 
     it "should use default timeout when available" do
       em do
-        start_server
+        server = start_server
 
-        request = client.call("server", "timeout", nil)
+        request = client.call(server.peer_id, "timeout", nil)
         request.execute!
 
         start = Time.now
@@ -134,9 +138,9 @@ describe NATS::RPC::Client do
 
     it "should pass a nil reply to the shortcut block on a timeout" do
       em do
-        start_server
+        server = start_server
 
-        client.call("server", "timeout", nil) do |request, reply|
+        client.call(server.peer_id, "timeout", nil) do |request, reply|
           reply.should be_nil
           done
         end
@@ -145,9 +149,9 @@ describe NATS::RPC::Client do
 
     it "should allow caller to override default timeout" do
       em do
-        start_server
+        server = start_server
 
-        request = client.call("server", "timeout", nil, :timeout => 0.01)
+        request = client.call(server.peer_id, "timeout", nil, :timeout => 0.01)
         request.execute!
 
         start = Time.now
@@ -166,9 +170,9 @@ describe NATS::RPC::Client do
 
     it "should not fire timeout when a reply is received" do
       em do
-        start_server
+        server = start_server
 
-        request = client.call("server", "timeout", nil, :timeout => 0.2)
+        request = client.call(server.peer_id, "timeout", nil, :timeout => 0.2)
         request.execute!
 
         replies = []
@@ -193,8 +197,8 @@ describe NATS::RPC::Client do
   context "mcall" do
     it "should be received and processed by all remotes" do
       em do
-        server1 = start_server("server1")
-        server2 = start_server("server2")
+        server1 = start_server
+        server2 = start_server
 
         request = client.mcall("echo", "Hi there!")
         request.execute!
@@ -207,7 +211,7 @@ describe NATS::RPC::Client do
         ::EM.add_timer(0.05) do
           replies.should have(2).replies
           replies.map(&:result).should == (["Hi there!"] * 2)
-          replies.map(&:peername).sort.should == ["server1", "server2"]
+          replies.map(&:peer_id).sort.should == [server1.peer_id, server2.peer_id].sort
           done
         end
       end
@@ -215,8 +219,8 @@ describe NATS::RPC::Client do
 
     it "should allow the user to prevent future replies from arriving" do
       em do
-        server1 = start_server("server1")
-        server2 = start_server("server2")
+        server1 = start_server
+        server2 = start_server
 
         request = client.mcall("echo", "Hi there!")
         request.execute!
@@ -338,8 +342,8 @@ describe NATS::RPC::Client do
   context "mcast" do
     it "should be received and processed by all remotes" do
       em do
-        server1 = start_server("server1")
-        server2 = start_server("server2")
+        server1 = start_server
+        server2 = start_server
 
         request = client.mcast("sink")
         request.execute!

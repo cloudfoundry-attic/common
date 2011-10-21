@@ -35,21 +35,21 @@ end
 describe NATS::RPC::Server do
   include_context :nats
 
-  def start_server(name = "server")
-    NATS::RPC::Server.new(nats, ServerSpecService.new, :peername => name)
+  def start_server
+    NATS::RPC::Server.new(nats, ServerSpecService.new, :peer_name => "server")
   end
 
-  def client(name = "client")
-    @clients ||= {}
-    @clients[name] = NATS::RPC::Client.new(nats, ServerSpecService.new, :peername => name)
+  let(:client) do
+    NATS::RPC::Client.new(nats, ServerSpecService.new, :peer_name => "client")
   end
 
   context "replying with an error" do
     context "that is raised" do
       it "should work when derived from Service::Error" do
         em do
-          start_server
-          client.call("server", "error") do |request, reply|
+          server = start_server
+
+          client.call(server.peer_id, "error") do |request, reply|
             lambda {
               reply.result
             }.should raise_error(ServerSpecError)
@@ -63,8 +63,9 @@ describe NATS::RPC::Server do
 
         begin
           em do
-            start_server
-            request = client.call("server", "invalid_error")
+            server = start_server
+
+            request = client.call(server.peer_id, "invalid_error")
             request.execute!
           end
         rescue => aux
@@ -80,8 +81,9 @@ describe NATS::RPC::Server do
     context "that is explicitly passed to the request object" do
       it "should work when derived from Service::Error" do
         em do
-          start_server
-          client.call("server", "delayed_error") do |request, reply|
+          server = start_server
+
+          client.call(server.peer_id, "delayed_error") do |request, reply|
             lambda {
               reply.result
             }.should raise_error(ServerSpecError)
@@ -95,8 +97,9 @@ describe NATS::RPC::Server do
 
         begin
           em do
-            start_server
-            request = client.call("server", "delayed_invalid_error")
+            server = start_server
+
+            request = client.call(server.peer_id, "delayed_invalid_error")
             request.execute!
           end
         rescue => aux

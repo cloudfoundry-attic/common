@@ -4,6 +4,11 @@ module NATS
   module RPC
     class Peer
 
+      def self.generate_peer_id
+        @peer_id ||= 0
+        @peer_id += 1
+      end
+
       attr_reader :nats
       attr_reader :service
       attr_reader :options
@@ -26,13 +31,16 @@ module NATS
       # Placeholder
       def post_initialize; end
 
-      # TODO: use something that scales better...
-      #
-      # This approach has problems when the process forks after setting up RPC
-      # code. However, since forking in the reactor loop is a bad practice,
-      # this shouldn't be a problem.
-      def peername
-        options[:peername] ||= "%s-%d" % [`hostname`.chomp, $?.pid]
+      # Return peer identification. This can either be user-provided by means
+      # of the options hash, or otherwise defaults to a combination of the
+      # hostname and the PID.
+      def peer_name
+        options[:peer_name] ||= "%s-%d" % [`hostname`.chomp, $?.pid]
+      end
+
+      # Return ID specific to this peer and particular object instance.
+      def peer_id
+        @peer_id ||= [peer_name, self.class.generate_peer_id].join(".")
       end
 
       # Base subject for all calls.

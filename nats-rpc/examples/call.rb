@@ -30,8 +30,8 @@ when "client"
       request.unregister
 
       # Call the peer that sent the PONG
-      client.call(reply.peername, "multiply", 10) do |request, reply|
-        puts "#{reply.peername} got #{reply.result} by randomly multiplying 10!"
+      client.call(reply.peer_id, "multiply", 10) do |request, reply|
+        puts "#{reply.peer_id} got #{reply.result} by randomly multiplying 10!"
       end
     end
   end
