@@ -13,6 +13,7 @@ module NATS
       attr_reader :service
       attr_reader :options
       attr_reader :logger
+      attr_reader :namespace
 
       def initialize(nats, service, options = {})
         service_base_class = NATS::RPC::Service
@@ -24,6 +25,7 @@ module NATS
         @service = service
         @options = options
         @logger = options[:logger]
+        @namespace = options[:namespace] || "default"
 
         post_initialize
       end
@@ -45,7 +47,7 @@ module NATS
 
       # Base subject for all calls.
       def base_subject
-        @base_subject ||= "rpc.#{service.name}"
+        @base_subject ||= "rpc.#{namespace}.#{service.name}"
       end
 
       # Proxy to NATS.
