@@ -37,12 +37,12 @@ module NATS
       # of the options hash, or otherwise defaults to a combination of the
       # hostname and the PID.
       def peer_name
-        options[:peer_name] ||= "%s-%d" % [`hostname`.chomp, $?.pid]
+        options[:peer_name] ||= "%s-%d" % [`hostname`.chomp, Process.pid]
       end
 
       # Return ID specific to this peer and particular object instance.
       def peer_id
-        @peer_id ||= [peer_name, self.class.generate_peer_id].join(".")
+        @peer_id ||= [peer_name, Peer.generate_peer_id].join(".")
       end
 
       # Base subject for all calls.
