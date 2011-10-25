@@ -24,9 +24,9 @@ module NATS
           @service = service
         end
 
-        def call(peer_id, method, payload = nil, options = {}, &blk)
+        def call(remote_peer_id, method, payload = nil, options = {}, &blk)
           Call.new(@client, @service, method, payload).tap do |request|
-            request.peer_id = peer_id
+            request.remote_peer_id = remote_peer_id
             request.timeout = options[:timeout] if options.has_key?(:timeout)
             request.shortcut!(&blk) if blk
           end
@@ -211,7 +211,7 @@ module NATS
 
       class Call < ExpectReplyRequest
 
-        attr_accessor :peer_id
+        attr_accessor :remote_peer_id
 
         def post_initialize
           super
@@ -220,7 +220,7 @@ module NATS
 
         def execute!
           start
-          client.publish([client.base_subject, service.name, "call", peer_id].join("."), message)
+          client.publish([client.base_subject, service.name, "call", remote_peer_id].join("."), message)
         end
       end
 
