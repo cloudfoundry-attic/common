@@ -88,7 +88,6 @@ describe NATS::RPC::Client do
         # This call emits two replies
         request = client.call(server.peer_id, "echo_twice", "Hi there!")
         request.execute!
-        request.should be_registered
 
         replies = []
         request.on("reply") do |reply|
@@ -96,7 +95,6 @@ describe NATS::RPC::Client do
         end
 
         ::EM::add_timer(0.05) do
-          request.should_not be_registered
           replies.should have(1).reply
           done
         end
@@ -228,7 +226,7 @@ describe NATS::RPC::Client do
         replies = []
         request.on("reply") do |reply|
           replies << reply
-          request.unregister
+          request.stop!
         end
 
         ::EM.add_timer(0.05) do

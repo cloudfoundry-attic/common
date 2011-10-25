@@ -38,6 +38,10 @@ module NATS
           @message["peer_id"]
         end
 
+        def reply_to
+          @message["reply_to"]
+        end
+
         def method
           @message["method"]
         end
@@ -68,7 +72,7 @@ module NATS
         protected
 
         def _reply(message)
-          server.publish(server.base_subject + ".inbox.#{peer_id}", message.merge({
+          server.publish(reply_to, message.merge({
             "message_id" => message_id,
             "peer_id" => server.peer_id
           }))

@@ -5,49 +5,24 @@ module NATS
   module RPC
     class Client < Peer
 
-      def post_initialize
-        subscribe(base_subject + ".inbox.#{peer_id}") do |message|
-          request = @registry[message["message_id"]]
-
-          if request
-            reply = Reply.new(request, message)
-            request.emit("reply", reply)
-          end
-        end
-
-        # Initialize registry mapping message IDs to calls with a pending reply.
-        # Request objects are responsible for removing themselves from the registry
-        # once they time out, or are otherwise cancelled.
-        @registry = {}
-      end
-
-      def register(request)
-        @registry[request.message_id] = request
-      end
-
-      def unregister(request)
-        @registry.delete(request.message_id)
-      end
-
-      def registered?(request)
-        @registry.has_key?(request.message_id)
-      end
-
       def call(peer_id, method, payload = nil, options = {}, &blk)
-        request = Call.new(self, method, payload, options)
+        request = Call.new(self, method, payload)
         request.peer_id = peer_id
+        request.timeout = options[:timeout] if options.has_key?(:timeout)
         request.shortcut!(&blk) if blk
         request
       end
 
       def mcall(method, payload = nil, options = {}, &blk)
-        request = Mcall.new(self, method, payload, options)
+        request = Mcall.new(self, method, payload)
+        request.timeout = options[:timeout] if options.has_key?(:timeout)
         request.shortcut!(&blk) if blk
         request
       end
 
       def mcast(method, payload = nil, options = {})
-        Mcast.new(self, method, payload, options)
+        request = Mcast.new(self, method, payload)
+        request
       end
 
       def generate_message_id
@@ -61,11 +36,13 @@ module NATS
 
         attr_reader :client
         attr_reader :message_id
-        attr_reader :method
-        attr_reader :options
 
-        def initialize(client, method, payload, options = {})
+        attr_reader :method
+        attr_reader :payload
+
+        def initialize(client, method, payload)
           @client = client
+          @message_id = client.generate_message_id
           @method = client.service.class.methods[method.to_s]
           @payload = payload
 
@@ -77,47 +54,18 @@ module NATS
           # This is toggled when the request is executed
           @in_progress = false
 
-          # Override the method's default options with the passed options
-          @options = @method.options.merge(options)
-
           post_initialize
         end
 
         # Placeholder.
         def post_initialize; end
 
-        # Generate message ID on-demand.
-        def message_id
-          @message_id ||= client.generate_message_id
-        end
-
         # Construct minimal message for this request.
         def message
           { "message_id" => message_id,
             "peer_id" => client.peer_id,
-            "method" => @method.name,
-            "payload" => @payload }
-        end
-
-        def generate_subject(*parts)
-          [client.base_subject, parts].flatten.join(".")
-        end
-
-        # Register this request with the client, so it can dispatch
-        # corresponding replies to this request object.
-        def register
-          client.register(self)
-        end
-
-        # Unregister this request with the client. Replys that arrive after
-        # doing this are no longer dispatched to this request object.
-        def unregister
-          client.unregister(self)
-        end
-
-        # Is this request registered to receive more replies?
-        def registered?
-          client.registered?(self)
+            "method" => method.name,
+            "payload" => payload }
         end
 
         # Verify if the call is valid. For a call to be valid, the method
@@ -129,29 +77,65 @@ module NATS
 
         protected
 
-        def prepare_execute
+        def start
           raise "invalid request" unless valid?
           raise "already in progress or finished" if @in_progress
           @in_progress = true
+        end
+
+        def stop
         end
       end
 
       class ExpectReplyRequest < Request
 
-        # All requests should finish sometime... Requests without a timeout
-        # otherwise hang around in the client's registry forever, unless
-        # explicitly unregistered by the user.
+        # When the required number of replies is not received, the timeout
+        # fires and pending subscriptions are cancelled.
         DEFAULT_TIMEOUT = 30
 
-        attr_accessor :timeout
+        attr_reader :inbox
 
-        def initialize(*args)
+        attr_accessor :timeout
+        attr_accessor :max_replies
+
+        def post_initialize
           super
 
-          @timeout = options[:timeout] || method.options[:timeout] || DEFAULT_TIMEOUT
+          # Generate inbox that recipients of this request can reply to
+          @inbox = [client.base_subject, "inbox", client.peer_id, message_id].join(".")
+          @subscription = nil
+
+          # Setup default timeout, user can override
+          @timeout = method.options[:timeout] || DEFAULT_TIMEOUT
           @timer = nil
+
+          # Maximum number of replies (is handled by the NATS server)
+          @max_replies = nil
+          @received_replies = 0
+
+          # Stop request when enough replies have been received
+          on("reply") {
+            @received_replies += 1
+            stop if max_replies_received?
+          }
+
+          # Stop request on timeout
+          on("timeout") {
+            stop
+          }
         end
 
+        # Have the maximum number of replies already been received?
+        def max_replies_received?
+          @max_replies && @received_replies >= @max_replies
+        end
+
+        # Merge this request's inbox into the minimal message.
+        def message
+          super.merge(:reply_to => inbox)
+        end
+
+        # Shortcut: use a single block for both replies and timeouts.
         def shortcut!(&blk)
           on("reply") { |reply|
             blk.call(self, reply)
@@ -164,38 +148,48 @@ module NATS
           execute!
         end
 
-        def register
-          super
-          start_timer
-        end
-
-        def unregister
-          super
-          stop_timer
+        def stop!
+          stop
         end
 
         protected
 
-        def prepare_execute
+        def start
           super
-          register
+
+          start_timer
+
+          # Subscribe to own inbox, optionally with max number of replies
+          options = {}
+          options[:max] = max_replies if max_replies
+          @subscription = client.subscribe(inbox, options) do |message|
+            reply = Reply.new(self, message)
+            emit("reply", reply)
+          end
+        end
+
+        def stop
+          super
+
+          stop_timer
+
+          # Unsubscribe from own inbox if not auto-unsubscribed
+          unless max_replies_received?
+            client.unsubscribe(@subscription)
+          end
         end
 
         def start_timer
-          if @timeout
-            # Unregister for new replies and emit event after timing out
-            @timer = ::EM::Timer.new(@timeout) {
-              emit("timeout")
-              unregister
-            }
-          end
+          raise "invalid timeout" unless timeout.kind_of?(Numeric)
+
+          # Unregister for new replies and emit event after timing out
+          @timer = ::EM.add_timer(@timeout) {
+            emit("timeout")
+          }
         end
 
         def stop_timer
-          if @timer
-            @timer.cancel
-            @timer = nil
-          end
+          ::EM.cancel_timer(@timer) if @timer
         end
       end
 
@@ -203,28 +197,28 @@ module NATS
 
         attr_accessor :peer_id
 
-        def execute!
-          prepare_execute
-          client.publish(generate_subject("call", peer_id), message)
+        def post_initialize
+          super
+          @max_replies = 1
+        end
 
-          # Unregister after receiving the first reply.
-          on("reply") {
-            unregister
-          }
+        def execute!
+          start
+          client.publish([client.base_subject, "call", peer_id].join("."), message)
         end
       end
 
       class Mcall < ExpectReplyRequest
         def execute!
-          prepare_execute
-          client.publish(generate_subject("mcall"), message)
+          start
+          client.publish([client.base_subject, "mcall"].join("."), message)
         end
       end
 
       class Mcast < Request
         def execute!
-          prepare_execute
-          client.publish(generate_subject("mcast"), message)
+          start
+          client.publish([client.base_subject, "mcast"].join("."), message)
         end
       end
 

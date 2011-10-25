@@ -27,7 +27,7 @@ when "client"
     # Find out which peers are available
     client.mcall("ping") do |request, reply|
       # Don't wait around for future replies
-      request.unregister
+      request.stop!
 
       # Call the peer that sent the PONG
       client.call(reply.peer_id, "multiply", 10) do |request, reply|

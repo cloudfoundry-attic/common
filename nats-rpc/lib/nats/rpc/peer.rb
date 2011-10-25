@@ -58,12 +58,18 @@ module NATS
       end
 
       # Proxy to NATS.
-      def subscribe(subject, &blk)
+      def subscribe(subject, *args, &blk)
         logger.debug("Subscribing to #{subject}") if logger
-        nats.subscribe(subject) do |json|
+        nats.subscribe(subject, *args) do |json|
           logger.debug("Received message on #{subject}: #{json}") if logger
           blk.call(JSON.parse(json))
         end
+      end
+
+      # Proxy to NATS.
+      def unsubscribe(subject, *args)
+        logger.debug("Unsubscribing from #{subject}") if logger
+        nats.unsubscribe(subject, *args)
       end
     end
   end # module RPC
