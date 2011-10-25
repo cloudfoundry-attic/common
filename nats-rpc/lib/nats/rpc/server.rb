@@ -1,32 +1,74 @@
 require "nats/rpc/peer"
+require "nats/rpc/util/event_emitter"
 
 module NATS
   module RPC
     class Server < Peer
 
+      include Util::EventEmitter
+
       def post_initialize
-        subscribe(base_subject + ".call.#{peer_id}") do |message|
-          handle(message)
-        end
-        subscribe(base_subject + ".mcall") do |message|
-          handle(message)
-        end
-        subscribe(base_subject + ".mcast") do |message|
-          handle(message)
-        end
+        @services = {}
       end
 
-      def handle(message)
-        request = Request.new(self, message)
-        request.execute!
+      def services
+        @services.dup
+      end
+
+      def start(service)
+        service_base_class = NATS::RPC::Service
+        unless service.kind_of?(service_base_class)
+          raise ArgumentError.new("Expected subclass of " + service_base_class.name)
+        end
+
+        subscribe_service(service)
+        emit("start", service)
+        @services[service.name] = service
+
+        nil
+      end
+
+      protected
+
+      def subscribe_service(service)
+        handler = lambda { |message| Request.execute!(self, service, message) }
+        subscribe(call_subject(service), &handler)
+        subscribe(mcall_subject(service), &handler)
+        subscribe(mcast_subject(service), &handler)
+      end
+
+      def unsubscribe_service(service)
+        unsubscribe(call_subject(service))
+        unsubscribe(mcall_subject(service))
+        unsubscribe(mcast_subject(service))
+      end
+
+      def call_subject(service)
+        [base_subject, service.name, "call", peer_id].join(".")
+      end
+
+      def mcall_subject(service)
+        [base_subject, service.name, "mcall"].join(".")
+      end
+
+      def mcast_subject(service)
+        [base_subject, service.name, "mcast"].join(".")
       end
 
       class Request
 
-        attr_reader :server
+        def self.execute!(server, service, message)
+          Request.new(server, service, message).tap do |request|
+            request.execute!
+          end
+        end
 
-        def initialize(server, message)
+        attr_reader :server
+        attr_reader :service
+
+        def initialize(server, service, message)
           @server = server
+          @service = service
           @message = message
         end
 
@@ -51,7 +93,7 @@ module NATS
         end
 
         def execute!
-          server.service.execute!(self)
+          service.execute!(self)
         rescue Service::Error => error
           reply_error(error)
         end

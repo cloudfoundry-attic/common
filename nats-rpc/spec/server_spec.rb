@@ -36,11 +36,13 @@ describe NATS::RPC::Server do
   include_context :nats
 
   def start_server
-    NATS::RPC::Server.new(nats, ServerSpecService.new, :peer_name => "server")
+    NATS::RPC::Server.new(nats, :peer_name => "server").tap do |server|
+      server.start(ServerSpecService.new)
+    end
   end
 
   let(:client) do
-    NATS::RPC::Client.new(nats, ServerSpecService.new, :peer_name => "client")
+    NATS::RPC::Client.new(nats, :peer_name => "client").service(ServerSpecService.new)
   end
 
   context "replying with an error" do

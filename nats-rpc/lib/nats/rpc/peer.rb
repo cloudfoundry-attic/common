@@ -10,19 +10,12 @@ module NATS
       end
 
       attr_reader :nats
-      attr_reader :service
       attr_reader :options
       attr_reader :logger
       attr_reader :namespace
 
-      def initialize(nats, service, options = {})
-        service_base_class = NATS::RPC::Service
-        unless service.kind_of?(service_base_class)
-          raise ArgumentError.new("Expected subclass of " + service_base_class.name)
-        end
-
+      def initialize(nats, options = {})
         @nats = nats
-        @service = service
         @options = options
         @logger = options[:logger]
         @namespace = options[:namespace] || "default"
@@ -47,7 +40,7 @@ module NATS
 
       # Base subject for all calls.
       def base_subject
-        @base_subject ||= "rpc.#{namespace}.#{service.name}"
+        @base_subject ||= "rpc.#{namespace}"
       end
 
       # Proxy to NATS.
