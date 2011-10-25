@@ -41,11 +41,13 @@ describe NATS::RPC::Client do
   include_context :nats
 
   def start_server
-    NATS::RPC::Server.new(nats, ClientSpecService.new, :peer_name => "server")
+    NATS::RPC::Server.new(nats, :peer_name => "server").tap do |server|
+      server.start(ClientSpecService.new)
+    end
   end
 
   let(:client) do
-    NATS::RPC::Client.new(nats, ClientSpecService.new, :peer_name => "client")
+    NATS::RPC::Client.new(nats, :peer_name => "client").service(ClientSpecService.new)
   end
 
   context "call" do
@@ -349,8 +351,8 @@ describe NATS::RPC::Client do
         # There is no reply. Wait for a bit and test that the request has been
         # received by the remotes.
         ::EM.add_timer(0.1) do
-          server1.service.sinked.should have(1).request
-          server2.service.sinked.should have(1).request
+          server1.services["ClientSpecService"].sinked.should have(1).request
+          server2.services["ClientSpecService"].sinked.should have(1).request
           done
         end
       end

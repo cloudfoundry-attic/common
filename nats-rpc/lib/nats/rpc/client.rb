@@ -5,29 +5,43 @@ module NATS
   module RPC
     class Client < Peer
 
-      def call(peer_id, method, payload = nil, options = {}, &blk)
-        request = Call.new(self, method, payload)
-        request.peer_id = peer_id
-        request.timeout = options[:timeout] if options.has_key?(:timeout)
-        request.shortcut!(&blk) if blk
-        request
-      end
-
-      def mcall(method, payload = nil, options = {}, &blk)
-        request = Mcall.new(self, method, payload)
-        request.timeout = options[:timeout] if options.has_key?(:timeout)
-        request.shortcut!(&blk) if blk
-        request
-      end
-
-      def mcast(method, payload = nil, options = {})
-        request = Mcast.new(self, method, payload)
-        request
-      end
-
       def generate_message_id
         @message_id ||= 0
         @message_id += 1
+      end
+
+      def service(service)
+        ServiceClient.new(self, service)
+      end
+
+      class ServiceClient
+
+        attr_reader :client
+        attr_reader :service
+
+        def initialize(client, service)
+          @client = client
+          @service = service
+        end
+
+        def call(peer_id, method, payload = nil, options = {}, &blk)
+          Call.new(@client, @service, method, payload).tap do |request|
+            request.peer_id = peer_id
+            request.timeout = options[:timeout] if options.has_key?(:timeout)
+            request.shortcut!(&blk) if blk
+          end
+        end
+
+        def mcall(method, payload = nil, options = {}, &blk)
+          Mcall.new(@client, @service, method, payload).tap do |request|
+            request.timeout = options[:timeout] if options.has_key?(:timeout)
+            request.shortcut!(&blk) if blk
+          end
+        end
+
+        def mcast(method, payload = nil, options = {})
+          Mcast.new(@client, @service, method, payload)
+        end
       end
 
       class Request
@@ -35,15 +49,17 @@ module NATS
         include Util::EventEmitter
 
         attr_reader :client
+        attr_reader :service
         attr_reader :message_id
 
         attr_reader :method
         attr_reader :payload
 
-        def initialize(client, method, payload)
+        def initialize(client, service, method, payload)
           @client = client
+          @service = service
           @message_id = client.generate_message_id
-          @method = client.service.class.methods[method.to_s]
+          @method = service.class.methods[method.to_s]
           @payload = payload
 
           # The service should export the specified method
@@ -102,7 +118,7 @@ module NATS
           super
 
           # Generate inbox that recipients of this request can reply to
-          @inbox = [client.base_subject, "inbox", client.peer_id, message_id].join(".")
+          @inbox = [client.base_subject, service.name, "inbox", client.peer_id, message_id].join(".")
           @subscription = nil
 
           # Setup default timeout, user can override
@@ -204,21 +220,21 @@ module NATS
 
         def execute!
           start
-          client.publish([client.base_subject, "call", peer_id].join("."), message)
+          client.publish([client.base_subject, service.name, "call", peer_id].join("."), message)
         end
       end
 
       class Mcall < ExpectReplyRequest
         def execute!
           start
-          client.publish([client.base_subject, "mcall"].join("."), message)
+          client.publish([client.base_subject, service.name, "mcall"].join("."), message)
         end
       end
 
       class Mcast < Request
         def execute!
           start
-          client.publish([client.base_subject, "mcast"].join("."), message)
+          client.publish([client.base_subject, service.name, "mcast"].join("."), message)
         end
       end
 

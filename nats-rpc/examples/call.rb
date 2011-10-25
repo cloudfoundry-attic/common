@@ -19,18 +19,20 @@ when "client"
   require "nats/rpc/client"
 
   EM.run do
-    nats = NATS.connect
     logger = Logger.new(STDOUT)
     logger.level = Logger::DEBUG
-    client = NATS::RPC::Client.new(nats, MathService.new, :logger => logger)
+
+    nats = NATS.connect
+    client = NATS::RPC::Client.new(nats, :logger => logger)
+    math_client = client.service(MathService.new)
 
     # Find out which peers are available
-    client.mcall("ping") do |request, reply|
+    math_client.mcall("ping") do |request, reply|
       # Don't wait around for future replies
       request.stop!
 
       # Call the peer that sent the PONG
-      client.call(reply.peer_id, "multiply", 10) do |request, reply|
+      math_client.call(reply.peer_id, "multiply", 10) do |request, reply|
         puts "#{reply.peer_id} got #{reply.result} by randomly multiplying 10!"
       end
     end
@@ -41,10 +43,12 @@ when "server"
   require "nats/rpc/server"
 
   EM.run do
-    nats = NATS.connect
     logger = Logger.new(STDOUT)
     logger.level = Logger::DEBUG
-    server = NATS::RPC::Server.new(nats, MathService.new, :logger => logger)
+
+    nats = NATS.connect
+    server = NATS::RPC::Server.new(nats, :logger => logger)
+    server.start(MathService.new)
   end
 
 else
