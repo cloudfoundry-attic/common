@@ -1,0 +1,9 @@
+source "http://rubygems.org"
+
+gemspec
+
+gem "nats-rpc", :path => "../nats-rpc"
+
+group :test do
+  gem "rspec"
+end
