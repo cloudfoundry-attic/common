@@ -107,7 +107,7 @@ module VCAP
         return unless level.value <= @log_level.value
         data = fmt % fmt_args
 
-        rec = VCAP::Logging::LogRecord.new(level, data, self, opts[:tags] || [])
+        rec = VCAP::Logging::LogRecord.new(lvl_name, data, self, opts[:tags] || [])
         @sink_map.get_sinks(lvl_name).each {|s| s.add_record(rec) }
       end
 
