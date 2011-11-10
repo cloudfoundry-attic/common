@@ -38,7 +38,6 @@ module VCAP
 
       def init
         fail "init() can only be called once" if @initialized
-        VCAP::Logging::Logger.define_log_levels(LOG_LEVELS)
         reset
 
         # Ideally we would call close() on each sink. Unfortunatley, we can't be sure
@@ -53,6 +52,7 @@ module VCAP
 
       # Exists primarily for testing
       def reset
+        VCAP::Logging::Logger.define_log_levels(LOG_LEVELS)
         @default_log_level = pick_default_level(LOG_LEVELS)
         @sink_map = VCAP::Logging::SinkMap.new(LOG_LEVELS)
         @log_level_filters = {}
