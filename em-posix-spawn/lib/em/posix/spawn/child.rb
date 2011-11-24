@@ -101,7 +101,6 @@ module EventMachine
             @pid_to_trigger_pipe = {}
             @pid_to_process_status = {}
             @paused = false
-            @pending = 0
           end
 
           def synchronize
@@ -110,8 +109,8 @@ module EventMachine
 
           ensure
             @paused = false
-            @pending.times { signal }
-            @pending = 0
+
+            signal
           end
 
           def pid_to_io(pid)
@@ -125,14 +124,18 @@ module EventMachine
           end
 
           def signal
-            if @paused
-              @pending += 1
-            else
-              pid = ::Process.wait(-1)
+            return if @paused
+
+            # The SIGCHLD handler may not be called exactly once for every
+            # child. I.e., multiple children exiting concurrently may trigger
+            # only one SIGCHLD in the parent. Therefore, reap all processes
+            # that can be reaped.
+            while pid = ::Process.wait(-1, ::Process::WNOHANG)
               @pid_to_process_status[pid] = $?
               w = @pid_to_trigger_pipe.delete(pid)
               w.close if w
             end
+          rescue ::Errno::ECHILD
           end
         end
 
