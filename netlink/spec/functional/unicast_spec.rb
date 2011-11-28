@@ -8,27 +8,24 @@ describe Netlink do
     sock.bind
 
     msg = Netlink::Message.new
-    msg.header.type  = Netlink::NLMSG_NOOP
-    msg.header.flags = Netlink::NLM_F_REQUEST | Netlink::NLM_F_ACK
-    msg.header.seq   = Time.now.to_i
-    msg.append("HI")
+    msg.nl_header.type  = Netlink::NLMSG_NOOP
+    msg.nl_header.flags = Netlink::NLM_F_REQUEST | Netlink::NLM_F_ACK
+    msg.nl_header.seq   = Time.now.to_i
+    msg.payload = "HI"
 
-    msg_encoded = msg.encode
-    nbytes_written = sock.sendto(msg_encoded)
-    nbytes_written.should == msg_encoded.length
+    nbytes_written = sock.send_message(msg)
+    nbytes_written.should == msg.encode.length
 
-    data = sock.recvmsg
-    reply = Netlink::Message.decode(data[0])
+    reply = sock.receive_message
 
     # Yes, this looks wrong. Netlink encodes ACKs in error messages sent
     # back from the kernel. The difference is that the 'error' field in the
     # nlmsgerr struct is set to zero and the original payload is not included.
-    reply.header.type.should == Netlink::NLMSG_ERROR
-    reply.header.seq.should == msg.header.seq
+    reply.nl_header.type.should == Netlink::NLMSG_ERROR
+    reply.nl_header.seq.should == msg.nl_header.seq
 
     # Check that the kernel sent back no error and our original message header
-    errhdr = Netlink::NlMsgErr.read(reply.payload)
-    errhdr.error.should == 0
-    errhdr.msg.should == msg.header
+    reply.err_header.error.should == 0
+    reply.err_header.msg.should == msg.nl_header
   end
 end

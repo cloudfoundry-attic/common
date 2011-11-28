@@ -25,4 +25,32 @@ describe Netlink::Util do
       end
     end
   end
+
+  describe '.write_checked' do
+    it 'should raise an instance of IOError on a partial write' do
+      io = mock()
+      io.should_receive(:write).with(any_args()).and_return(1)
+      expect do
+        Netlink::Util.write_checked(io, 'test')
+      end.to raise_error(IOError)
+    end
+  end
+
+  describe '.read_checked' do
+    it 'should raise an instance of IOError on a partial read' do
+      io = mock()
+      io.should_receive(:read).with(any_args()).and_return("x")
+      expect do
+        Netlink::Util.read_checked(io, 4)
+      end.to raise_error(IOError)
+    end
+
+    it 'should raise an instance of EOFError if read returns nil' do
+      io = mock()
+      io.should_receive(:read).with(any_args()).and_return(nil)
+      expect do
+        Netlink::Util.read_checked(io, 4)
+      end.to raise_error(EOFError)
+    end
+  end
 end

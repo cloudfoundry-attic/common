@@ -1,6 +1,7 @@
 # Constants imported from linux/netlink.h
 module Netlink
-  PF_NETLINK = 16
+  PF_NETLINK  = 16
+  SOL_NETLINK = 270
 
   NETLINK_ROUTE           = 0     # Routing/device hook
   NETLINK_UNUSED          = 1     # Unused number
@@ -51,6 +52,12 @@ module Netlink
   NLMSG_ERROR             = 0x2
   NLMSG_DONE              = 0x3   # End of dump.
   NLMSG_OVERRUN           = 0x4   # Data lost. Supposedly unused.
+
+  NETLINK_ADD_MEMBERSHIP  = 1
+  NETLINK_DROP_MEMBERSHIP = 2
+  NETLINK_PKTINFO         = 3
+  NETLINK_BROADCAST_ERROR = 4
+  NETLINK_NO_ENOBUFS      = 5
 
   # Attributes
 
