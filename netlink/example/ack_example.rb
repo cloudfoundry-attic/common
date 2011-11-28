@@ -2,41 +2,30 @@ ENV['BUNDLE_GEMFILE'] ||= File.expand_path('../../Gemfile', __FILE__)
 require 'bundler'
 Bundler.setup
 
-require 'hexdump'
 require 'logger'
 require 'netlink'
 
-def log_hexdump(logger, level, data)
-  dump = StringIO.new
-  data.hexdump(:output => dump)
-  dump.rewind
-  dump.lines.each do |line|
-    logger.send(level, line.chomp)
-  end
-end
-
-log = Logger.new(STDOUT)
 sock = Netlink::Socket.new(Netlink::NETLINK_GENERIC)
 sockaddr = Netlink::Sockaddr.new(:pid => Process.pid)
 sock.bind(sockaddr)
 
 msg = Netlink::Message.new
-msg.header.type  = Netlink::NLMSG_NOOP
-msg.header.flags = Netlink::NLM_F_REQUEST | Netlink::NLM_F_ACK
-msg.header.seq   = Time.now.to_i
-msg.header.pid   = Process.pid
+msg.nl_header.type  = Netlink::NLMSG_NOOP
+msg.nl_header.flags = Netlink::NLM_F_REQUEST | Netlink::NLM_F_ACK
+msg.nl_header.seq   = Time.now.to_i
+msg.nl_header.pid   = Process.pid
 
-enc_msg = msg.encode
-nbytes_written = sock.sendto(enc_msg)
+log = Logger.new(STDOUT)
+nbytes_written = sock.send_message(msg)
 log.info("Wrote #{nbytes_written} bytes")
-log_hexdump(log, :info, enc_msg)
 
-data = sock.recvmsg
-log.info("Received #{data[0].length} bytes")
-log_hexdump(log, :info, data[0])
+reply = sock.receive_message
 
-reply = Netlink::Message.decode(data[0])
-log.info("Type: #{reply.header.type}")
-error = Netlink::NlMsgErr.read(reply.payload)
-log.info("Error: #{error.error}")
+case reply
+when Netlink::ErrorMessage
+  log.info("Type : #{reply.nl_header.type}")
+  log.info("Error: #{reply.err_header.error}")
 
+else
+  log.warn("Received unexpected type: #{reply.nl_header.type}")
+end
