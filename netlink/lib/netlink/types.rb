@@ -26,7 +26,7 @@ module Netlink
     uint32 :pid,   :initial_value => 0          # PortID. Leave as is to have kernel fill in.
 
     def payload_len
-      len - num_bytes
+      self.len - self.num_bytes
     end
   end
 
@@ -34,8 +34,8 @@ module Netlink
   class NlAttrHdrRaw < BinData::Record
     endian :little
 
-    uint16 :type, :initial_value => 0
     uint16 :len,  :initial_value => 4
+    uint16 :type, :initial_value => 0
   end
 
   # BinData::Record defines accessors the first time an *instance* of
@@ -91,13 +91,17 @@ module Netlink
       end
       set_type_raw(newval)
     end
+
+    def payload_len
+      self.len - self.num_bytes
+    end
   end
   NLA_HDRLEN = NlAttrHdr.new.num_bytes
 
   class NlMsgErr < BinData::Record
     endian :little
 
-    uint32     :error, :initial_value => 0
+    int32      :error, :initial_value => 0
     nl_msg_hdr :msg
   end
 end

@@ -1,36 +1,52 @@
 = Overview =
 
-This provides a toolkit for interfacing with Netlink in pure ruby. It
-is very much a work in progress, but you should be able to do useful
-things with it in its current state.It introduces a new socket type,
-`Netlink::Socket`, for communicating with the various netlink
-subsystems as well as abstractions for creating and parsing netlink
-messages. Currently, message creation is somewhat tedious, however, it
-is expected that this will become less so as the library evolves.
+This gem provides a toolkit for interfacing with Netlink in pure ruby.
 
-= Sample usage =
+= Caveat Emptor =
 
-The following sample shows how to check if the generic netlink family
-is available for use.
+This gem is very much a work-in-progress. It can be used to do useful things in
+its current state, but still has some rough edges (see Todo).
 
-    require 'netlink'
-    sock = Netlink::Socket.new(Netlink::NETLINK_GENERIC)
-    sock.bind
+= Netlink 101 =
 
-    msg = Netlink::Message.new
-    msg.header.type  = Netlink::NLMSG_NOOP
-    msg.header.flags = Netlink::NLM_F_REQUEST | Netlink::NLM_F_ACK
-    msg.header.seq   = Time.now.to_i
+== Overview ==
 
-    sock.sendto(msg.encode)
-    data = sock.recvmsg
+Netlink provides an efficient mechanism for user-space to kernel-space and
+user-space to user-space communication. It supports both unicast and multicast
+communication and is implemented as a message oriented protocol using the BSD
+sockets api. Sample use cases include updating routing tables, querying for
+detailed task information, and receiving notifications when users exceed
+disk quotas.
 
-    reply = Netlink::Message.decode(data[0])
-    errmsg = Netlink::NlMsgErr.read(reply.payload)
-    if errmsg.error > 0
-      puts "Unavailable"
-    else
-      puts "Available"
-    end
+== Message format ==
 
-More examples will be added to the `example` directory over time.
+The Netlink message format is fairly simple. All messages are composed of
+a mandatory Netlink header, following by 0 or more family headers, followed by
+the message payload. The majority of message payloads consist of a sequence
+of attributes encoded using the TLV (Type, Length, Value) format. We attempt
+to optimize for this case and provide a convenient DSL for declaring message
+structure.
+
+== Error Handling ==
+
+Netlink provides two means of communicating errors back to the user: 1) through
+the use of special error messages, and 2) through the BSD sockets api. The first
+mechanism is used to signal errors pertaining to the various subsystems (invalid
+arguments in requests, for example). The second mechanism is used to signal errors
+that occur when transferring data between user-space and kernel-space. For example,
+recvmsg() will return ENOBUFS if the kernel fails to transfer data to the user.
+
+= Usage =
+
+See the `example' directory.
+
+= Todo =
+
+== Must Have =
+
+- Nested attribute support
+- Multi-part message support
+
+== Nice to Have =
+
+- Pretty printing of messages

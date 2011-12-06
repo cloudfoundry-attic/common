@@ -4,9 +4,8 @@ require 'netlink'
 
 describe Netlink::NlAttrHdr do
   describe '#initialize' do
-    it 'should preserve type and len' do
-      attr = Netlink::NlAttrHdr.new(:len => 5, :type => Netlink::NLA_F_NESTED | Netlink::NLA_F_NET_BYTEORDER)
-      attr.len.should == 5
+    it 'should preserve type' do
+      attr = Netlink::NlAttrHdr.new(:type => Netlink::NLA_F_NESTED | Netlink::NLA_F_NET_BYTEORDER)
       attr.nested.should be_true
       attr.network_byte_ordered.should be_true
     end
