@@ -244,8 +244,17 @@ module EventMachine
           end
 
           def close
-            @io.close rescue nil
+            # NB: The ordering here is important. If we're using epoll,
+            #     detach() attempts to deregister the associated fd via
+            #     EPOLL_CTL_DEL and marks the EventableDescriptor for deletion
+            #     upon completion of the iteration of the event loop. However,
+            #     if the fd was closed before calling detach(), epoll_ctl()
+            #     will sometimes return EBADFD and fail to remove the fd. This
+            #     can lead to epoll_wait() returning an event whose data
+            #     pointer is invalid (since it was deleted in a prior iteration
+            #     of the event loop).
             detach
+            @io.close rescue nil
           end
         end
 

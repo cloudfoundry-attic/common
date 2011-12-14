@@ -15,4 +15,5 @@ Gem::Specification.new do |s|
 
   s.add_runtime_dependency "eventmachine"
   s.add_runtime_dependency "posix-spawn"
+  s.add_development_dependency "rake"
 end
