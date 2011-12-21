@@ -215,4 +215,33 @@ class ChildTest < Test::Unit::TestCase
       }
     }
   end
+
+  def test_many_pending_processes
+    EM.epoll
+
+    em {
+      target = 100
+      finished = 0
+
+      finish = lambda { |p|
+        finished += 1
+
+        if finished == target
+          done
+        end
+      }
+
+      spawn = lambda { |i|
+        EM.next_tick {
+          if i < target
+            p = Child.new('sleep %.6f' % (rand(10_000) / 1_000_000.0))
+            p.callback { finish.call(p) }
+            spawn.call(i+1)
+          end
+        }
+      }
+
+      spawn.call(0)
+    }
+  end
 end
