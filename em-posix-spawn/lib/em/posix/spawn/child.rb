@@ -98,7 +98,7 @@ module EventMachine
           end
 
           def initialize
-            @pid_to_trigger_pipe = {}
+            @pid_callback = {}
             @pid_to_process_status = {}
             @paused = false
           end
@@ -113,10 +113,8 @@ module EventMachine
             signal
           end
 
-          def pid_to_io(pid)
-            r, w = IO.pipe
-            @pid_to_trigger_pipe[pid] = w
-            r
+          def pid_callback(pid, &blk)
+            @pid_callback[pid] = blk
           end
 
           def pid_to_process_status(pid)
@@ -132,8 +130,8 @@ module EventMachine
             # that can be reaped.
             while pid = ::Process.wait(-1, ::Process::WNOHANG)
               @pid_to_process_status[pid] = $?
-              w = @pid_to_trigger_pipe.delete(pid)
-              w.close if w
+              blk = @pid_callback.delete(pid)
+              EM.next_tick(&blk) if blk
             end
           rescue ::Errno::ECHILD
           end
@@ -195,10 +193,8 @@ module EventMachine
             }
           end
 
-          # watch sigcld trigger pipe
-          csigcld = EM.watch sigcld.pid_to_io(@pid), ReadableStream, ''
-          csigcld.notify_readable = true
-          csigcld.callback {
+          # run block when pid is reaped
+          sigcld.pid_callback(@pid) {
             in_flight.each(&:close)
             in_flight.clear
 
