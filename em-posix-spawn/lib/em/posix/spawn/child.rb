@@ -46,8 +46,7 @@ module EventMachine
           @max = @options.delete(:max)
           @options.delete(:chdir) if @options[:chdir].nil?
 
-          @sigcld = SignalHandler.instance
-          sigcld.synchronize { exec! }
+          exec!
         end
 
         # All data written to the child process's stdout stream as a String.
@@ -82,15 +81,13 @@ module EventMachine
 
         private
 
-        attr_reader :sigcld
-
         class SignalHandler
 
           def self.instance
             @instance ||= begin
                             new.tap { |instance|
                               prev_handler = Signal.trap("CLD") {
-                                instance.signal
+                                EM.next_tick { instance.signal }
                                 prev_handler.call if prev_handler
                               }
                             }
@@ -103,16 +100,6 @@ module EventMachine
             @paused = false
           end
 
-          def synchronize
-            @paused = true
-            yield
-
-          ensure
-            @paused = false
-
-            signal
-          end
-
           def pid_callback(pid, &blk)
             @pid_callback[pid] = blk
           end
@@ -122,8 +109,6 @@ module EventMachine
           end
 
           def signal
-            return if @paused
-
             # The SIGCHLD handler may not be called exactly once for every
             # child. I.e., multiple children exiting concurrently may trigger
             # only one SIGCHLD in the parent. Therefore, reap all processes
@@ -194,13 +179,13 @@ module EventMachine
           end
 
           # run block when pid is reaped
-          sigcld.pid_callback(@pid) {
+          SignalHandler.instance.pid_callback(@pid) {
             in_flight.each(&:close)
             in_flight.clear
 
             @timer.cancel if @timer
             @runtime = Time.now - @start
-            @status = sigcld.pid_to_process_status(@pid)
+            @status = SignalHandler.instance.pid_to_process_status(@pid)
             @out = cout.buffer
             @err = cerr.buffer
 
