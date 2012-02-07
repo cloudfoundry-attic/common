@@ -7,7 +7,13 @@ module VCAP::Logging::Formatter
   class DelimitedFormatter < BaseFormatter
 
     DEFAULT_DELIMITER        = ' '
-    DEFAULT_TIMESTAMP_FORMAT = '%F %T %z' # YYYY-MM-DD HH:MM:SS TZ
+
+    if defined?(RUBY_VERSION) && RUBY_VERSION >= "1.9.2"
+      DEFAULT_TIMESTAMP_FORMAT = '%F %T.%6N %z' # YYYY-MM-DD HH:MM:SS.NNNNNN TZ
+    else
+      # Time#strftime on 1.8 doesn't do fractional seconds
+      DEFAULT_TIMESTAMP_FORMAT = '%F %T %z' # YYYY-MM-DD HH:MM:SS TZ
+    end
 
     # This provides a tiny DSL for constructing the formatting function. We opt
     # to define the method inline in order to avoid incurring multiple method calls

@@ -10,7 +10,14 @@ module VCAP
   module Logging
 
     FORMATTER = VCAP::Logging::Formatter::DelimitedFormatter.new do
-      timestamp '[%F %T]'
+
+      if defined?(RUBY_VERSION) && RUBY_VERSION >= "1.9.2"
+        timestamp '[%F %T.%6N]'
+      else
+        # Time#strftime on 1.8 doesn't do fractional seconds
+        timestamp '[%F %T]'
+      end
+
       logger_name
       tags
       process_id
