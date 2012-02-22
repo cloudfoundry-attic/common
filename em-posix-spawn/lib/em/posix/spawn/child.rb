@@ -87,7 +87,7 @@ module EventMachine
             @instance ||= begin
                             new.tap { |instance|
                               prev_handler = Signal.trap("CLD") {
-                                EM.next_tick { instance.signal }
+                                EM.add_timer(0) { instance.signal }
                                 prev_handler.call if prev_handler
                               }
                             }
