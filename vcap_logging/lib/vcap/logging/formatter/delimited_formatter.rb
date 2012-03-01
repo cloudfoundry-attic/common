@@ -6,97 +6,58 @@ module VCAP::Logging::Formatter
   # A formatter for creating messages delimited by a given value (e.g. space separated logs)
   class DelimitedFormatter < BaseFormatter
 
-    DEFAULT_DELIMITER        = ' '
+    DEFAULT_DELIMITER = ' '
 
-    if defined?(RUBY_VERSION) && RUBY_VERSION >= "1.9.2"
-      DEFAULT_TIMESTAMP_FORMAT = '%F %T.%6N %z' # YYYY-MM-DD HH:MM:SS.NNNNNN TZ
-    else
-      # Time#strftime on 1.8 doesn't do fractional seconds
-      DEFAULT_TIMESTAMP_FORMAT = '%F %T %z' # YYYY-MM-DD HH:MM:SS TZ
+    attr_reader :timestamp_fmt
+
+    def initialize(delim=DEFAULT_DELIMITER)
+      @delim = delim
+      if defined?(RUBY_VERSION) && RUBY_VERSION >= "1.9.2"
+        @timestamp_fmt = '[%F %T.%6N]'
+      else
+        # Time#strftime on 1.8 doesn't do fractional seconds
+        @timestamp_fmt = '[%F %T]'
+      end
     end
 
-    # This provides a tiny DSL for constructing the formatting function. We opt
-    # to define the method inline in order to avoid incurring multiple method calls
-    # per call to format_record().
-    #
-    # Usage:
-    #
-    # formatter = VCAP::Logging::Formatter::DelimitedFormatter.new do
-    #   timestamp '%s'
-    #   log_level
-    #   data
-    # end
-    #
-    # @param  delim  String   Delimiter that will separate fields in the message
-    # @param         Block    Block that defines the log message format
-    def initialize(delim=DEFAULT_DELIMITER, &blk)
-      @exprs = []
+    def format_record(log_record)
+      line = [
+       log_record.timestamp.strftime(@timestamp_fmt),            # Timestamp
+       log_record.logger_name,                                   # Logger name
+       log_record.tags.empty? ? '-' : log_record.tags.join(','), # Tags
+       "pid=" + log_record.process_id.to_s,                      # Process id
+       "tid=" + log_record.thread_shortid.to_s,                  # Thread id
+       "fid=" + log_record.fiber_shortid.to_s,                   # Fiber id
+       "%6s" % [log_record.log_level.to_s.upcase],               # Log level
+       "--",                                                     # Separator
+       format_data(log_record.data)].join(@delim)
 
-      # Collect the expressions we want to use when constructing messages in the
-      # order that they should appear.
-      instance_eval(&blk)
-
-      # Build the format string to that will generate the message along with
-      # the arguments
-      fmt_chars = @exprs.map {|e| e[0] }
-      fmt       = fmt_chars.join(delim) + "\n"
-      fmt_args  = @exprs.map {|e| e[1] }.join(', ')
-
-      instance_eval("def format_record(log_record); '#{fmt}' % [#{fmt_args}]; end")
+      line.gsub(/\n/, '\\n') + "\n"
     end
+
 
     private
 
-    def log_level
-      @exprs << ['%6s', "log_record.log_level.to_s.upcase"]
-    end
+    def format_data(data)
+      # Include the class name, message, and backtrace if the supplied datum
+      # is an exception.
+      formatted_data = nil
+      if data.kind_of?(Exception)
+        formatted_data = data.class.to_s + "<<" + data.to_s + ":"
+        if backtrace = data.backtrace
+          formatted_data += backtrace.join(',')
+        end
+        formatted_data += ">>"
+      else
+        # Replace invalid and undefined byte sequences so that any subsequent
+        # string operations don't fail with 'invalid byte sequence...'
+        formatted_data = data.to_s.encode('ASCII',
+                                          :invalid => :replace,
+                                          :undef   => :replace)
+      end
 
-    def data
-      # Not sure of a better way to do this...
-      # If we are given an exception, include the class name, string representation, and stacktrace
-      snippet = "(log_record.data.kind_of?(Exception) ? " \
-                + "log_record.data.class.to_s + '(\"' + log_record.data.to_s + '\", [' + (log_record.data.backtrace ? log_record.data.backtrace.join(',') : '') + '])'" \
-                + ": log_record.data.to_s" \
-                + ").gsub(/\n/, '\\n')"
-      @exprs << ['%s', snippet]
+      formatted_data
     end
-
-    def tags
-      @exprs << ['%s', "log_record.tags.empty? ? '-': log_record.tags.join(',')"]
-    end
-
-    def fiber_id
-      @exprs << ['%s', "log_record.fiber_id"]
-    end
-
-    def fiber_shortid
-      @exprs << ['%s', "log_record.fiber_shortid"]
-    end
-
-    def process_id
-      @exprs << ['%s', "log_record.process_id"]
-    end
-
-    def thread_id
-      @exprs << ['%s', "log_record.thread_id"]
-    end
-
-    def thread_shortid
-      @exprs << ['%s', "log_record.thread_shortid"]
-    end
-
-    def timestamp(fmt=DEFAULT_TIMESTAMP_FORMAT)
-      @exprs << ['%s', "log_record.timestamp.strftime('#{fmt}')"]
-    end
-
-    def logger_name
-      @exprs << ['%s', "log_record.logger_name"]
-    end
-
-    def text(str)
-      @exprs << ['%s', "'#{str}'"]
-    end
-
   end
 
 end
