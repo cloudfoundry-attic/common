@@ -9,24 +9,7 @@ require 'vcap/logging/version'
 module VCAP
   module Logging
 
-    FORMATTER = VCAP::Logging::Formatter::DelimitedFormatter.new do
-
-      if defined?(RUBY_VERSION) && RUBY_VERSION >= "1.9.2"
-        timestamp '[%F %T.%6N]'
-      else
-        # Time#strftime on 1.8 doesn't do fractional seconds
-        timestamp '[%F %T]'
-      end
-
-      logger_name
-      tags
-      process_id
-      thread_shortid
-      fiber_shortid
-      log_level
-      text '--'
-      data
-    end
+    FORMATTER = VCAP::Logging::Formatter::DelimitedFormatter.new
 
     LOG_LEVELS = {
       :off    => 0,
