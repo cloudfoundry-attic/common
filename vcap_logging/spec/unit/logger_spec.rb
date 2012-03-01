@@ -63,10 +63,13 @@ describe VCAP::Logging::Logger do
     it 'should use supplied blocks to generate log data' do
       block_called = false
       sink = mock(:sink)
-      sink.should_receive(:add_record).with(an_instance_of(VCAP::Logging::LogRecord)).once
+      sink.should_receive(:add_record).with(an_instance_of(VCAP::Logging::LogRecord)).once do |record|
+        record.data.should == 'foo'
+      end
+
       @sink_map.add_sink(nil, nil, sink)
       @logger.log_level = :info
-      @logger.log(:fatal) { block_called = true; 'foo' }
+      @logger.fatal { block_called = true; 'foo' }
       block_called.should be_true
     end
 

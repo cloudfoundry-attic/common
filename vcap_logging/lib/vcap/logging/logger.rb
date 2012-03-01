@@ -46,7 +46,10 @@ module VCAP
         # Needed in order to create a new scope when binding level to the blocks
 
         def define_log_helper(level)
-          define_method(level) {|*args| log(level, *args) }
+
+          define_method(level) {|*args,&block|
+            log(level, *args,&block)
+          }
         end
 
         def define_logf_helper(name, level)
