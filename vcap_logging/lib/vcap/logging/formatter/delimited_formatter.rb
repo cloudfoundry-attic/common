@@ -21,8 +21,17 @@ module VCAP::Logging::Formatter
     end
 
     def format_record(log_record)
-      line = [
-       log_record.timestamp.strftime(@timestamp_fmt),            # Timestamp
+      raw_data = nil
+
+      if log_record.data.kind_of?(Exception)
+        raw_data = format_exception(log_record.data)
+      else
+        raw_data = log_record.data.to_s
+      end
+
+      escaped_data = escape_data(raw_data)
+
+      [log_record.timestamp.strftime(@timestamp_fmt),            # Timestamp
        log_record.logger_name,                                   # Logger name
        log_record.tags.empty? ? '-' : log_record.tags.join(','), # Tags
        "pid=" + log_record.process_id.to_s,                      # Process id
@@ -30,34 +39,82 @@ module VCAP::Logging::Formatter
        "fid=" + log_record.fiber_shortid.to_s,                   # Fiber id
        "%6s" % [log_record.log_level.to_s.upcase],               # Log level
        "--",                                                     # Separator
-       format_data(log_record.data)].join(@delim)
-
-      line.gsub(/\n/, '\\n') + "\n"
+       escaped_data].join(@delim) + "\n"
     end
-
 
     private
 
-    def format_data(data)
-      # Include the class name, message, and backtrace if the supplied datum
-      # is an exception.
-      formatted_data = nil
-      if data.kind_of?(Exception)
-        formatted_data = data.class.to_s + "<<" + data.to_s + ":"
-        if backtrace = data.backtrace
-          formatted_data += backtrace.join(',')
-        end
-        formatted_data += ">>"
-      else
-        # Replace invalid and undefined byte sequences so that any subsequent
-        # string operations don't fail with 'invalid byte sequence...'
-        formatted_data = data.to_s.encode('ASCII',
-                                          :invalid => :replace,
-                                          :undef   => :replace)
+    # Includes the class name, message, and backtrace formatted as
+    #
+    # <<[Exception]:[Backtrace]>>
+    #
+    # @param [Exception] e
+    #
+    # @return [String]
+    def format_exception(e)
+      ret = e.class.to_s + "<<" + e.to_s + ":"
+
+      ret += e.backtrace.join(',') if e.backtrace
+
+      ret += ">>"
+
+      ret
+    end
+
+    # Escapes carriage returns and newlines.
+    #
+    # NB: This will convert strings that contain invalid characters for their
+    #     encodings to binary strings with hex-escaped non-printable
+    #     characters.
+    #
+    # @param [String]  data  The string to be escaped.
+    #
+    # @return [String]
+    def escape_data(data)
+      unless data.valid_encoding?
+        # Treat the line as an arbitrary sequence of bytes. Any invalid
+        # character sequences for the original encoding will no longer cause
+        # the next statements to blow up with "invalid byte sequence..."
+        # errors.
+        data = data.dup.force_encoding("BINARY")
+        data = escape_nonprintable_ascii(data)
       end
 
-      formatted_data
+      ret = ""
+
+      0.upto(data.length - 1) do |ii|
+        case data[ii]
+        when "\n"
+          ret += "\\n"
+        when "\r"
+          ret += "\\r"
+        else
+          ret += data[ii]
+        end
+      end
+
+      ret
+    end
+
+    # Hex encodes non-printable ascii characters.
+    #
+    # @param [String] data
+    #
+    # @return [String]
+    def escape_nonprintable_ascii(data)
+      ret = ""
+
+      0.upto(data.length - 1) do |ii|
+        ord_val = data[ii].ord
+
+        if (ord_val > 31) && (ord_val < 127)
+          ret += data[ii]
+        else
+          ret += "\\x%02x" % [ord_val]
+        end
+      end
+
+      ret
     end
   end
-
 end
