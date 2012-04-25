@@ -26,6 +26,11 @@ describe VCAP::Logging::Formatter::DelimitedFormatter do
       formatter.format_record(rec).should match(/test\\ning123\\n\\n\n/)
     end
 
+    it 'should encode carriage returns' do
+      rec = VCAP::Logging::LogRecord.new(:debug, "test\ring123\r\r", logger)
+      formatter.format_record(rec).should match(/test\\ring123\\r\\r/)
+    end
+
     it 'should format exceptions' do
       begin
         raise StandardError, "Testing 123"
@@ -36,11 +41,17 @@ describe VCAP::Logging::Formatter::DelimitedFormatter do
       match_regex = /StandardError<<Testing 123:/
       formatter.format_record(rec).should match(match_regex)
     end
-  end
 
-  it 'should convert data to ascii' do
-    data = "HI\u2600"
-    rec = VCAP::Logging::LogRecord.new(:error, data, logger)
-    formatter.format_record(rec).should match(/HI\?\n$/)
+    it 'should allow strings with valid encodings to pass through untouched' do
+      data = "HI\u2600"
+      rec = VCAP::Logging::LogRecord.new(:error, data, logger)
+      formatter.format_record(rec).should match(/#{data}/)
+    end
+
+    it 'should treat strings with invalid encodings as binary data' do
+      data = "HI\u2026".force_encoding("US-ASCII")
+      rec = VCAP::Logging::LogRecord.new(:error, data, logger)
+      formatter.format_record(rec).should match(/HI\\xe2\\x80\\xa6/)
+    end
   end
 end
