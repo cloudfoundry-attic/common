@@ -101,6 +101,19 @@ describe VCAP::Logging::Logger do
       block_called.should be_false
     end
 
+    it 'should indicate if a level is active' do
+      @levels.keys.each do |level|
+        @logger.log_level = level
+        @logger.send(level.to_s + '?').should be_true
+      end
+      @logger.log_level = :info
+      @logger.debug?.should be_false
+
+      @logger.log_level = :fatal
+      @logger.info?.should be_false
+      @logger.debug?.should be_false
+    end
+
     it "should add an 'exception' tag when data is a kind of Exception" do
       @logger.log_level = :info
       ex = StandardError.new("Testing 123")

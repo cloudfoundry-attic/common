@@ -50,6 +50,10 @@ module VCAP
           define_method(level) {|*args,&block|
             log(level, *args,&block)
           }
+
+          define_method(level.to_s + '?') {
+            LOG_LEVELS[log_level] >= LOG_LEVELS[level]
+          }
         end
 
         def define_logf_helper(name, level)
