@@ -83,6 +83,10 @@ module EventMachine
 
         class SignalHandler
 
+          def self.install!
+            instance
+          end
+
           def self.instance
             @instance ||= begin
                             new.tap { |instance|
@@ -125,6 +129,9 @@ module EventMachine
         # Execute command, write input, and read output. This is called
         # immediately when a new instance of this object is initialized.
         def exec!
+          # The signal handler MUST be installed before spawning a new process
+          SignalHandler.install!
+
           # spawn the process and hook up the pipes
           @pid, stdin, stdout, stderr = popen4(@env, *(@argv + [@options]))
           @start = Time.now
