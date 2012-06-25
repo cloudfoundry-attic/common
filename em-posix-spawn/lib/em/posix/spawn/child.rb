@@ -1,5 +1,6 @@
 require 'eventmachine'
 require 'posix/spawn'
+require 'set'
 
 module EventMachine
 
@@ -37,7 +38,8 @@ module EventMachine
         # was killed because of exceeding the timeout, or exceeding the maximum
         # number of bytes to read from stdout and stderr combined. Once the
         # success callback is triggered, this objects's out, err and status
-        # attributes are available.
+        # attributes are available. Clients can register callbacks to listen to
+        # updates from out and err streams of the process.
         def initialize(*args)
           @env, @argv, options = extract_process_spawn_arguments(*args)
           @options = options.dup
@@ -77,6 +79,10 @@ module EventMachine
         def kill
           @timer.cancel if @timer
           ::Process.kill('TERM', @pid) rescue nil
+        end
+
+        def add_streams_listener(&listener)
+          Set.new([@cout.after_read(&listener), @cerr.after_read(&listener)])
         end
 
         private
@@ -137,17 +143,17 @@ module EventMachine
           @start = Time.now
 
           # watch fds
-          cin = EM.watch stdin, WritableStream, @input.dup if @input
-          cout = EM.watch stdout, ReadableStream, ''
-          cerr = EM.watch stderr, ReadableStream, ''
+          @cin = EM.watch stdin, WritableStream, @input.dup, "stdin" if @input
+          @cout = EM.watch stdout, ReadableStream, '', "stdout"
+          @cerr = EM.watch stderr, ReadableStream, '', "stderr"
 
           # register events
-          cin.notify_writable = true if cin
-          cout.notify_readable = true
-          cerr.notify_readable = true
+          @cin.notify_writable = true if @cin
+          @cout.notify_readable = true
+          @cerr.notify_readable = true
 
           # keep track of open fds
-          in_flight = [cin, cout, cerr].compact
+          in_flight = [@cin, @cout, @cerr].compact
           in_flight.each { |io|
             # force binary encoding
             io.force_encoding
@@ -161,8 +167,8 @@ module EventMachine
           # keep track of max output
           max = @max
           if max && max > 0
-            check_buffer_size = lambda {
-              if cout.buffer.size + cerr.buffer.size > max
+            check_buffer_size = lambda { |*args|
+              if @cout.buffer.size + @cerr.buffer.size > max
                 failure = MaximumOutputExceeded
                 in_flight.each(&:close)
                 in_flight.clear
@@ -170,8 +176,8 @@ module EventMachine
               end
             }
 
-            cout.after_read(&check_buffer_size)
-            cerr.after_read(&check_buffer_size)
+            @cout.after_read(&check_buffer_size)
+            @cerr.after_read(&check_buffer_size)
           end
 
           # kill process when it doesn't terminate in time
@@ -193,8 +199,8 @@ module EventMachine
             @timer.cancel if @timer
             @runtime = Time.now - @start
             @status = SignalHandler.instance.pid_to_process_status(@pid)
-            @out = cout.buffer
-            @err = cerr.buffer
+            @out = @cout.buffer
+            @err = @cerr.buffer
 
             if failure
               set_deferred_failure failure
@@ -210,8 +216,10 @@ module EventMachine
 
           attr_reader :buffer
 
-          def initialize(buffer)
+          def initialize(buffer, name)
             @buffer = buffer
+            @name = name
+            @closed = false
           end
 
           def force_encoding
@@ -221,17 +229,10 @@ module EventMachine
             end
           end
 
-          def after_read(&blk)
-            @after_read = blk if blk
-            @after_read
-          end
-
-          def after_write(&blk)
-            @after_write = blk if blk
-            @after_write
-          end
-
           def close
+            if @closed
+              raise WardenError.new("Stream is already closed.")
+            end
             # NB: The ordering here is important. If we're using epoll,
             #     detach() attempts to deregister the associated fd via
             #     EPOLL_CTL_DEL and marks the EventableDescriptor for deletion
@@ -243,20 +244,84 @@ module EventMachine
             #     of the event loop).
             detach
             @io.close rescue nil
+            @closed = true
+          end
+
+          def closed?
+            @closed
           end
         end
 
+        # TODO(kowshik): Garbage collect dead stream listeners.
         class ReadableStream < Stream
+
+          class ReadableStreamListener
+
+            attr_reader :name
+
+            def initialize(name, &block)
+              @name = name
+              @block = block
+              @offset = 0
+              @closed = false
+            end
+
+            # Sends only the update. Also ensures that duplicate calls
+            # are idempotent.
+            def call(buffer)
+              to_be_sent = buffer ? buffer.slice(@offset..-1) : ""
+              to_be_sent ||= ""
+              @offset = buffer.length > @offset ? buffer.length : @offset
+              @block.call(self, to_be_sent)
+            end
+
+            def close
+              @closed = true
+            end
+
+            def closed?
+              @closed
+            end
+          end
 
           # Maximum buffer size for reading
           BUFSIZE = (32 * 1024)
 
+          def initialize(buffer, name, &block)
+            super(buffer, name, &block)
+            @after_read = []
+          end
+
+          def after_read(&block)
+            if block
+              listener = ReadableStreamListener.new(@name, &block)
+              # If this stream is already closed, then close the listener in
+              # the next Event Machine tick. This ensures that the buffer
+              # is flushed to the listener even when the process has completed.
+              if @closed
+                EM.next_tick do
+                  listener.close
+                  listener.call(@buffer)
+                end
+              end
+              @after_read << listener
+              listener
+            end
+          end
+
           def notify_readable
             begin
               @buffer << @io.readpartial(BUFSIZE)
-              @after_read.call if @after_read
+              @after_read.each { |listener| listener.call(@buffer) }
             rescue Errno::EAGAIN, Errno::EINTR
             rescue EOFError
+              @after_read.each do |listener|
+                listener.close
+                # Ensures that if the listener attaches itself to the process
+                # just before the stream is closed, it still receives entire
+                # buffer.
+                listener.call(@buffer)
+              end
               close
               set_deferred_success
             end
@@ -270,7 +335,6 @@ module EventMachine
               boom = nil
               size = @io.write_nonblock(@buffer)
               @buffer = @buffer[size, @buffer.size]
-              @after_write.call if @after_write
             rescue Errno::EPIPE => boom
             rescue Errno::EAGAIN, Errno::EINTR
             end
