@@ -2,6 +2,7 @@
 
 require 'test/unit'
 require 'em/posix/spawn/child'
+require 'set'
 
 module Helpers
 
@@ -242,6 +243,120 @@ class ChildTest < Test::Unit::TestCase
       }
 
       spawn.call(0)
+    }
+  end
+
+  # Tests if a listener correctly receives stream updates from a process that
+  # has already finished execution without producing any output in its stdout
+  # and stderr.
+  def test_listener_empty_streams_completed_process
+    em {
+      p = Child.new("echo -n")
+      p.callback {
+        assert p.success?
+
+        EM.next_tick {
+          num_sentinels = p.add_streams_listener { |update|
+            assert update.sentinel?
+            num_sentinels -= 1
+          }
+
+          assert_equal 2, num_sentinels
+
+          EM.next_tick {
+            assert_equal 0, num_sentinels
+            done
+          }
+        }
+      }
+    }
+  end
+
+  # Tests if a listener correctly receives stream updates from a process that
+  # has already finished execution, and has produced some output in its stdout
+  # and stderr.
+  def test_listener_nonempty_streams_completed_process
+    em {
+      p = Child.new("echo test >& 1; echo test >& 2")
+      p.callback {
+        assert p.success?
+
+        EM.next_tick {
+          streams = Set.new
+          num_streams = 0
+          num_sentinels = p.add_streams_listener { |update|
+            if update.sentinel?
+              num_sentinels -= 1
+            else
+              assert_equal "test\n", update.data
+              streams << update.name
+              num_streams -= 1
+            end
+          }
+
+          assert_equal 2, num_sentinels
+
+          num_streams = num_sentinels
+          EM.next_tick {
+            assert_equal 0, num_streams
+            assert_equal 0, num_sentinels
+            assert_equal 2, streams.length
+            assert streams.include?("stdout")
+            assert streams.include?("stderr")
+            done
+          }
+        }
+      }
+    }
+  end
+
+  # Tests if multiple listeners correctly receives stream updates from the same
+  # process.
+  def test_listener_nonempty_streams_active_process
+    em {
+      command = "echo -n A; sleep 0.1"
+      command << "; echo -n B; sleep 0.1"
+      command << "; echo -n C; sleep 0.1"
+      p = Child.new(command)
+
+      first_listener_data = ''
+      second_listener_data = ''
+      num_sentinels = 0
+      p.callback {
+        assert p.success?
+        assert_equal 0, num_sentinels
+        assert_equal "ABC", first_listener_data
+        assert_equal "ABC", second_listener_data
+        done
+      }
+
+      called = false
+      num_sentinels = p.add_streams_listener { |update|
+        if update.sentinel?
+          num_sentinels -= 1
+        else
+          assert_equal "stdout", update.name
+          first_listener_data << update.data
+        end
+
+        unless called
+          EM.next_tick {
+            p.add_streams_listener { |update|
+              if update.sentinel?
+                num_sentinels -= 1
+              else
+                assert_equal "stdout", update.name
+                second_listener_data << update.data
+              end
+            }
+          }
+
+          called = true
+        end
+      }
+
+      assert_equal 2, num_sentinels
+      num_sentinels = 4 # for both listeners
     }
   end
 end
