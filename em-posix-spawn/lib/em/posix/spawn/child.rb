@@ -37,7 +37,8 @@ module EventMachine
         # was killed because of exceeding the timeout, or exceeding the maximum
         # number of bytes to read from stdout and stderr combined. Once the
         # success callback is triggered, this objects's out, err and status
-        # attributes are available.
+        # attributes are available. Clients can register callbacks to listen to
+        # updates from out and err streams of the process.
         def initialize(*args)
           @env, @argv, options = extract_process_spawn_arguments(*args)
           @options = options.dup
@@ -77,6 +78,12 @@ module EventMachine
         def kill
           @timer.cancel if @timer
           ::Process.kill('TERM', @pid) rescue nil
+        end
+
+        def add_streams_listener(&listener)
+          @cout.after_read(&listener)
+          @cerr.after_read(&listener)
+          2
         end
 
         private
@@ -137,17 +144,17 @@ module EventMachine
           @start = Time.now
 
           # watch fds
-          cin = EM.watch stdin, WritableStream, @input.dup if @input
-          cout = EM.watch stdout, ReadableStream, ''
-          cerr = EM.watch stderr, ReadableStream, ''
+          cin = EM.watch stdin, WritableStream, @input.dup, "stdin" if @input
+          @cout = EM.watch stdout, ReadableStream, '', "stdout"
+          @cerr = EM.watch stderr, ReadableStream, '', "stderr"
 
           # register events
           cin.notify_writable = true if cin
-          cout.notify_readable = true
-          cerr.notify_readable = true
+          @cout.notify_readable = true
+          @cerr.notify_readable = true
 
           # keep track of open fds
-          in_flight = [cin, cout, cerr].compact
+          in_flight = [cin, @cout, @cerr].compact
           in_flight.each { |io|
             # force binary encoding
             io.force_encoding
@@ -161,8 +168,8 @@ module EventMachine
           # keep track of max output
           max = @max
           if max && max > 0
-            check_buffer_size = lambda {
-              if cout.buffer.size + cerr.buffer.size > max
+            check_buffer_size = lambda { |*args|
+              if @cout.buffer.size + @cerr.buffer.size > max
                 failure = MaximumOutputExceeded
                 in_flight.each(&:close)
                 in_flight.clear
@@ -170,8 +177,8 @@ module EventMachine
               end
             }
 
-            cout.after_read(&check_buffer_size)
-            cerr.after_read(&check_buffer_size)
+            @cout.after_read(&check_buffer_size)
+            @cerr.after_read(&check_buffer_size)
           end
 
           # kill process when it doesn't terminate in time
@@ -193,8 +200,8 @@ module EventMachine
             @timer.cancel if @timer
             @runtime = Time.now - @start
             @status = SignalHandler.instance.pid_to_process_status(@pid)
-            @out = cout.buffer
-            @err = cerr.buffer
+            @out = @cout.buffer
+            @err = @cerr.buffer
 
             if failure
               set_deferred_failure failure
@@ -204,14 +211,19 @@ module EventMachine
           }
         end
 
+        # TODO(kowshik): Garbage collect dead stream listeners.
         class Stream < Connection
 
           include Deferrable
 
           attr_reader :buffer
 
-          def initialize(buffer)
+
+          def initialize(buffer, name)
             @buffer = buffer
+            @name = name
+            @after_read = []
+            @after_write = []
           end
 
           def force_encoding
@@ -221,14 +233,26 @@ module EventMachine
             end
           end
 
-          def after_read(&blk)
-            @after_read = blk if blk
-            @after_read
+          def after_read(&block)
+            if block
+              listener = StreamListener.new(@name, &block)
+              @after_read << listener
+              EM.next_tick do
+                listener.call(@buffer)
+                listener.close
+              end
+            end
           end
 
-          def after_write(&blk)
-            @after_write = blk if blk
-            @after_write
+          def after_write(&block)
+            if block
+              listener = StreamListener.new(@name, false, &block)
+              @after_write << listener
+              EM.next_tick do
+                listener.call(@buffer)
+                listener.close
+              end
+            end
           end
 
           def close
@@ -254,9 +278,10 @@ module EventMachine
           def notify_readable
             begin
               @buffer << @io.readpartial(BUFSIZE)
-              @after_read.call if @after_read
+              @after_read.each { |listener| listener.call(@buffer) }
             rescue Errno::EAGAIN, Errno::EINTR
             rescue EOFError
+              @after_read.each { |listener| listener.close }
               close
               set_deferred_success
             end
@@ -269,15 +294,71 @@ module EventMachine
             begin
               boom = nil
               size = @io.write_nonblock(@buffer)
+              written_data = @buffer[0, size]
               @buffer = @buffer[size, @buffer.size]
-              @after_write.call if @after_write
+              @after_write.each { |listener| listener.call(written_data) }
             rescue Errno::EPIPE => boom
             rescue Errno::EAGAIN, Errno::EINTR
             end
             if boom || @buffer.size == 0
+              @after_write.each { |listener| listener.close }
               close
               set_deferred_success
             end
+          end
+        end
+
+        class StreamListener
+
+          def initialize(name, increasing = true, &block)
+            @name = name
+            @offset = 0
+            @block = block
+            @closed = false
+            @increasing = increasing
+          end
+
+          def call(buffer)
+            # If this is an increasing stream, send only the update.
+            # Otherwise, send the entire stream.
+            to_be_sent = buffer
+            if @increasing
+              to_be_sent = buffer.slice(@offset..-1)
+            end
+
+            # If to_be_sent is empty, then donot send a stream update to the
+            # registered callback to avoid a duplicate update.
+            unless to_be_sent.empty?
+              @offset = buffer.length
+              @block.call(StreamUpdate.new(@name, to_be_sent))
+            end
+          end
+
+          def close
+            # Send the sentinel to the registered callback only once.
+            unless @closed
+              @block.call(StreamUpdate.create_sentinel)
+              @closed = true
+            end
+          end
+        end
+
+        class StreamUpdate
+
+          attr_reader :data, :name
+
+          def initialize(name = nil, data = nil)
+            @name = name
+            @data = data
+            @sentinel = @name == nil && @data == nil
+          end
+
+          def sentinel?
+            @sentinel
+          end
+
+          def self.create_sentinel
+            StreamUpdate.new
           end
         end
       end
