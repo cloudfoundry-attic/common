@@ -232,7 +232,7 @@ module EventMachine
 
           def close
             if @closed
-              raise WardenError.new("Stream is already closed.")
+              raise "Stream is already closed."
             end
             # NB: The ordering here is important. If we're using epoll,
             #     detach() attempts to deregister the associated fd via
