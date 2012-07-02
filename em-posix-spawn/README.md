@@ -28,6 +28,17 @@ EM.run {
     puts "Error running child process: #{err.inspect}"
     EM.stop
   }
+
+  # Add callbacks to listen to the child process' output streams.
+  listeners = p.add_streams_listener { |listener, data|
+    # Do something with the data.
+    # Use listener.name to get the name of the stream.
+  }
+
+  # Wait for the child process' output streams to be closed.
+  while !listeners.all?(&:closed?) {
+    ...
+  }
 }
 ```
 
