@@ -41,6 +41,12 @@ EM.run {
   while !listeners.all?(&:closed?) {
     ...
   }
+
+  # Sends SIGTERM to the process, and SIGKILL after 5 seconds.
+  # Returns true if this kill was successful, false otherwise.
+  # The timeout is optional, default timeout is 0 (immediate SIGKILL
+  # after SIGTERM).
+  p.kill(5)
 }
 ```
 
