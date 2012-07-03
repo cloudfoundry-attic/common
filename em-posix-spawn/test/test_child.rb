@@ -388,4 +388,45 @@ class ChildTest < Test::Unit::TestCase
       end
     end
   end
+
+  # Test if duplicate kill is ignored.
+  def test_duplicate_kill
+    em do
+      command = "trap ':' TERM; while :; do :; done"
+      p = Child.new(command)
+      p.callback do
+        done
+      end
+
+      sleep 0.005
+      assert p.kill(0.005)
+      assert !p.kill(0.005)
+    end
+  end
+
+  # Test if kill on terminated job is ignored
+  def test_kill_terminated_job
+    em do
+      command = "printf ''"
+      p = Child.new(command)
+      p.callback do
+        assert !p.kill(1)
+        done
+      end
+    end
+  end
+
+  # Test kill on active job.
+  def test_kill_active_job
+    em do
+      command = "trap ':' TERM; while :; do :; done"
+      p = Child.new(command)
+      p.callback do
+        done
+      end
+
+      sleep 0.005
+      assert p.kill(0.005)
+    end
+  end
 end
