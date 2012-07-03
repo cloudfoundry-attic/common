@@ -73,10 +73,24 @@ module EventMachine
         end
 
         # Send the SIGTERM signal to the process.
+        # Then send the SIGKILL signal to the process after the
+        # specified timeout.
+        def kill(timeout = 0)
+          return false if terminated? || @kill_timer
+          timeout ||= 0
+          terminate
+          @kill_timer = Timer.new(timeout) {
+            ::Process.kill('KILL', @pid) rescue nil
+          }
+
+          true
+        end
+
+        # Send the SIGTERM signal to the process.
         #
         # Returns the Process::Status object obtained by reaping the process.
-        def kill
-          @timer.cancel if @timer
+        def terminate
+          @exec_timer.cancel if @exec_timer
           ::Process.kill('TERM', @pid) rescue nil
         end
 
@@ -173,7 +187,7 @@ module EventMachine
                 failure = MaximumOutputExceeded
                 in_flight.each(&:close)
                 in_flight.clear
-                kill
+                terminate
               end
             }
 
@@ -181,14 +195,15 @@ module EventMachine
             @cerr.after_read(&check_buffer_size)
           end
 
-          # kill process when it doesn't terminate in time
+          # request termination of process when it doesn't terminate
+          # in time
           timeout = @timeout
           if timeout && timeout > 0
-            @timer = Timer.new(timeout) {
+            @exec_timer = Timer.new(timeout) {
               failure = TimeoutExceeded
               in_flight.each(&:close)
               in_flight.clear
-              kill
+              terminate
             }
           end
 
@@ -197,7 +212,8 @@ module EventMachine
             in_flight.each(&:close)
             in_flight.clear
 
-            @timer.cancel if @timer
+            @exec_timer.cancel if @exec_timer
+            @kill_timer.cancel if @kill_timer
             @runtime = Time.now - @start
             @status = SignalHandler.instance.pid_to_process_status(@pid)
             @out = @cout.buffer
