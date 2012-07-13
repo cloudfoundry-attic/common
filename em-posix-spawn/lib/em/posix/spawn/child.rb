@@ -157,6 +157,9 @@ module EventMachine
           @pid, stdin, stdout, stderr = popen4(@env, *(@argv + [@options]))
           @start = Time.now
 
+          # Don't leak into processes spawned after us.
+          [stdin, stdout, stderr].each { |io| io.close_on_exec = true }
+
           # watch fds
           @cin = EM.watch stdin, WritableStream, @input.dup, "stdin" if @input
           @cout = EM.watch stdout, ReadableStream, '', "stdout"
