@@ -30,6 +30,8 @@ module EventMachine
         #   :max     => total    Maximum number of bytes of output to allow the
         #                        process to generate before aborting with a
         #                        MaximumOutputExceeded exception.
+        #   :prepend_stdout => str Data to prepend to stdout
+        #   :prepend_stderr => str Data to prepend to stderr
         #
         # Returns a new Child instance that is being executed. The object
         # includes the Deferrable module, and executes the success callback
@@ -45,6 +47,8 @@ module EventMachine
           @input = @options.delete(:input)
           @timeout = @options.delete(:timeout)
           @max = @options.delete(:max)
+          @prepend_stdout = @options.delete(:prepend_stdout) || ""
+          @prepend_stderr = @options.delete(:prepend_stderr) || ""
           @options.delete(:chdir) if @options[:chdir].nil?
 
           exec!
@@ -164,8 +168,8 @@ module EventMachine
 
           # watch fds
           @cin = EM.watch stdin, WritableStream, @input.dup, "stdin" if @input
-          @cout = EM.watch stdout, ReadableStream, '', "stdout"
-          @cerr = EM.watch stderr, ReadableStream, '', "stderr"
+          @cout = EM.watch stdout, ReadableStream, @prepend_stdout, "stdout"
+          @cerr = EM.watch stderr, ReadableStream, @prepend_stderr, "stderr"
 
           # register events
           @cin.notify_writable = true if @cin
