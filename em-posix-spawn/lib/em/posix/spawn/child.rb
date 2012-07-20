@@ -62,6 +62,8 @@ module EventMachine
         # Total command execution time (wall-clock time)
         attr_reader :runtime
 
+        attr_reader :pid
+
         # Determine if the process did exit with a zero exit status.
         def success?
           @status && @status.success?
