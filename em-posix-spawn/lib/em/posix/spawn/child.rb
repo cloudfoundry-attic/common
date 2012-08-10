@@ -192,11 +192,13 @@ module EventMachine
           max = @max
           if max && max > 0
             check_buffer_size = lambda { |*args|
-              if @cout.buffer.size + @cerr.buffer.size > max
-                failure = MaximumOutputExceeded
-                in_flight.each(&:close)
-                in_flight.clear
-                request_termination
+              if !terminated?
+                if @cout.buffer.size + @cerr.buffer.size > max
+                  failure = MaximumOutputExceeded
+                  in_flight.each(&:close)
+                  in_flight.clear
+                  request_termination
+                end
               end
             }
 
@@ -218,13 +220,20 @@ module EventMachine
 
           # run block when pid is reaped
           SignalHandler.instance.pid_callback(@pid) {
-            in_flight.each(&:close)
-            in_flight.clear
-
             @sigterm_timer.cancel if @sigterm_timer
             @sigkill_timer.cancel if @sigkill_timer
             @runtime = Time.now - @start
             @status = SignalHandler.instance.pid_to_process_status(@pid)
+
+            in_flight.each do |stream|
+              # Trigger final read to make sure buffer is drained
+              if stream.respond_to?(:notify_readable)
+                stream.notify_readable
+              end
+
+              stream.close
+            end
+
             @out = @cout.buffer
             @err = @cerr.buffer
 
@@ -307,7 +316,7 @@ module EventMachine
           end
 
           # Maximum buffer size for reading
-          BUFSIZE = (32 * 1024)
+          BUFSIZE = (64 * 1024)
 
           def initialize(buffer, name, &block)
             super(buffer, name, &block)
@@ -334,7 +343,7 @@ module EventMachine
 
           def notify_readable
             begin
-              @buffer << @io.readpartial(BUFSIZE)
+              @buffer << @io.read_nonblock(BUFSIZE)
               @after_read.each { |listener| listener.call(@buffer) }
             rescue Errno::EAGAIN, Errno::EINTR
             rescue EOFError
