@@ -234,6 +234,8 @@ module EventMachine
               stream.close
             end
 
+            in_flight.clear
+
             @out = @cout.buffer
             @err = @cerr.buffer
 
