@@ -16,6 +16,8 @@ module Helpers
       ::EM.add_timer(timeout) { raise "timeout" }
       yield
     end
+
+    ::EM::POSIX::Spawn::Child::SignalHandler.teardown!
   end
 
   def done

@@ -104,31 +104,51 @@ module EventMachine
           [@cout.after_read(&listener), @cerr.after_read(&listener)]
         end
 
-        private
-
         class SignalHandler
 
-          def self.install!
-            instance
+          def self.setup!
+            @instance ||= begin
+                            new.tap do |instance|
+                              instance.setup!
+                            end
+                          end
+          end
+
+          def self.teardown!
+            if @instance
+              @instance.teardown!
+              @instance = nil
+            end
           end
 
           def self.instance
-            @instance ||= begin
-                            new.tap { |instance|
-                              prev_handler = Signal.trap("CLD") {
-                                if EM.reactor_running?
-                                  EM.add_timer(0) { instance.signal }
-                                end
-                                prev_handler.call if prev_handler
-                              }
-                            }
-                          end
+            @instance
           end
 
           def initialize
             @pid_callback = {}
             @pid_to_process_status = {}
-            @paused = false
+          end
+
+          def setup!
+            @pipe = ::IO.pipe
+            @notifier = ::EM.watch @pipe[0], SignalNotifier, self
+            @notifier.notify_readable = true
+
+            @prev_handler = ::Signal.trap(:CHLD) do
+              @pipe[1].syswrite("x")
+              @prev_handler.call
+            end
+
+            @prev_handler ||= lambda { |*_| ; }
+          end
+
+          def teardown!
+            ::Signal.trap(:CHLD, &@prev_handler)
+
+            @notifier.detach if ::EM.reactor_running?
+            @pipe[0].close rescue nil
+            @pipe[1].close rescue nil
           end
 
           def pid_callback(pid, &blk)
@@ -151,13 +171,24 @@ module EventMachine
             end
           rescue ::Errno::ECHILD
           end
+
+          class SignalNotifier < ::EM::Connection
+            def initialize(handler)
+              @handler = handler
+            end
+
+            def notify_readable
+              @io.sysread(1)
+              @handler.signal
+            end
+          end
         end
 
         # Execute command, write input, and read output. This is called
         # immediately when a new instance of this object is initialized.
         def exec!
           # The signal handler MUST be installed before spawning a new process
-          SignalHandler.install!
+          SignalHandler.setup!
 
           # spawn the process and hook up the pipes
           @pid, stdin, stdout, stderr = popen4(@env, *(@argv + [@options]))
