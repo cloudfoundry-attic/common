@@ -190,7 +190,20 @@ module EventMachine
           # The signal handler MUST be installed before spawning a new process
           SignalHandler.setup!
 
-          # spawn the process and hook up the pipes
+          if RUBY_PLATFORM =~ /linux/i && @options.delete(:close_others)
+            @options[:in] = :in
+            @options[:out] = :out
+            @options[:err] = :err
+
+            ::Dir.glob("/proc/%d/fd/*" % Process.pid).map do |file|
+              fd = File.basename(file).to_i
+
+              if fd > 2
+                @options[fd] = :close
+              end
+            end
+          end
+
           @pid, stdin, stdout, stderr = popen4(@env, *(@argv + [@options]))
           @start = Time.now
 

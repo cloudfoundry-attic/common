@@ -36,6 +36,10 @@ class ChildTest < Test::Unit::TestCase
   include ::EM::POSIX::Spawn
   include Helpers
 
+  def teardown
+    ::EM::POSIX::Spawn::Child::SignalHandler.teardown!
+  end
+
   def test_sanity
     assert_same ::EM::POSIX::Spawn::Child, Child
   end
@@ -429,6 +433,38 @@ class ChildTest < Test::Unit::TestCase
 
       sleep 0.005
       assert p.kill(0.005)
+    end
+  end
+
+  def test_close_others_false
+    r, w = IO.pipe
+
+    em do
+      p = Child.new("ls /proc/$$/fd")
+      p.callback do
+        fds = p.out.split.map(&:to_i)
+        assert !fds.empty?
+
+        assert fds.include?(r.fileno)
+        assert fds.include?(w.fileno)
+        done
+      end
+    end
+  end
+
+  def test_close_others_true
+    r, w = IO.pipe
+
+    em do
+      p = Child.new("ls /proc/$$/fd", :close_others => true)
+      p.callback do
+        fds = p.out.split.map(&:to_i)
+        assert !fds.empty?
+
+        assert !fds.include?(r.fileno)
+        assert !fds.include?(w.fileno)
+        done
+      end
     end
   end
 end
