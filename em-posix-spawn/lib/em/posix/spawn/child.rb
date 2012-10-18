@@ -136,7 +136,11 @@ module EventMachine
             @notifier.notify_readable = true
 
             @prev_handler = ::Signal.trap(:CHLD) do
-              @pipe[1].syswrite("x")
+              begin
+                @pipe[1].write_nonblock("x")
+              rescue IO::WaitWritable
+              end
+
               @prev_handler.call
             end
 
@@ -178,7 +182,11 @@ module EventMachine
             end
 
             def notify_readable
-              @io.sysread(1)
+              begin
+                @io.read_nonblock(65536)
+              rescue IO::WaitReadable
+              end
+
               @handler.signal
             end
           end
