@@ -1,0 +1,16 @@
+#!/bin/bash
+
+set -e
+set -x
+
+(
+  cd em-posix-spawn
+  bundle install
+  bundle exec rake test
+)
+
+(
+  cd vcap_logging
+  bundle install
+  bundle exec rake spec
+)
