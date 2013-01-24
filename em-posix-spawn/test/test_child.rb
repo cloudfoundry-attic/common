@@ -395,6 +395,48 @@ class ChildTest < Test::Unit::TestCase
     end
   end
 
+  # Tests if a listener receives the current buffer when it attaches to a process.
+  def test_listener_is_called_with_buffer_first
+    em do
+      command = "printf A; sleep 0.1"
+      command << "; printf B; sleep 0.1"
+      command << "; printf C; sleep 0.1"
+      p = Child.new(command)
+
+      i = 0
+      p.add_streams_listener do |listener_outer, data_outer|
+        i += 1
+
+        case i
+        when 1
+          assert_equal listener_outer.name, "stdout"
+          assert_equal data_outer, "A"
+
+          # Add streams listener from fresh stack to avoid mutating @after_read while iterating
+          EM.next_tick do
+            j = 0
+            p.add_streams_listener do |listener_inner, data_inner|
+              j += 1
+
+              case j
+              when 1
+                assert_equal "stdout", listener_inner.name
+                assert_equal "A", data_inner
+              when 2
+                assert_equal "stdout", listener_inner.name
+                assert_equal "B", data_inner
+              when 3
+                assert_equal "stdout", listener_inner.name
+                assert_equal "C", data_inner
+                done
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
   # Test if duplicate kill is ignored.
   def test_duplicate_kill
     em do

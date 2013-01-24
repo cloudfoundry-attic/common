@@ -380,16 +380,24 @@ module EventMachine
           def after_read(&block)
             if block
               listener = Listener.new(@name, &block)
-              # If this stream is already closed, then close the listener in
-              # the next Event Machine tick. This ensures that the listener
-              # receives the entire buffer if it attaches to the process only
-              # after its completion.
               if @closed
+                # If this stream is already closed, then close the listener in
+                # the next Event Machine tick. This ensures that the listener
+                # receives the entire buffer if it attaches to the process only
+                # after its completion.
                 EM.next_tick do
                   listener.close
                   listener.call(@buffer)
                 end
+              elsif !@buffer.empty?
+                # If this stream's buffer is non-empty, pass it to the listener
+                # in the next tick to avoid having to wait for the next piece
+                # of data to be read.
+                EM.next_tick do
+                  listener.call(@buffer)
+                end
               end
+
               @after_read << listener
               listener
             end
