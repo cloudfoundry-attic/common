@@ -1,6 +1,12 @@
-This repo contains code that is shared between inner/outer shell
+[![Build Status](https://travis-ci.org/cloudfoundry/common.png)](https://travis-ci.org/cloudfoundry/common)
 
-## File a Bug
+# common
 
-To file a bug against Cloud Foundry Open Source and its components,
-sign up and use our bug tracking system: [http://cloudfoundry.atlassian.net](http://cloudfoundry.atlassian.net)
+This repo contains code that is shared between Cloud Foundry and BOSH..
+
+## File a bug
+
+To file a bug against Cloud Foundry Open Source and its components, sign
+up and use our [bug tracking system][atlassian].
+
+[atlassian]: http://cloudfoundry.atlassian.net
