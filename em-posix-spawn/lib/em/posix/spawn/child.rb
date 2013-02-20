@@ -219,12 +219,12 @@ module EventMachine
           [stdin, stdout, stderr].each { |io| io.close_on_exec = true }
 
           # watch fds
-          @cin = EM.watch stdin, WritableStream, @input.dup, "stdin" if @input
+          @cin = EM.watch stdin, WritableStream, (@input || "").dup, "stdin"
           @cout = EM.watch stdout, ReadableStream, @prepend_stdout, "stdout"
           @cerr = EM.watch stderr, ReadableStream, @prepend_stderr, "stderr"
 
           # register events
-          @cin.notify_writable = true if @cin
+          @cin.notify_writable = true
           @cout.notify_readable = true
           @cerr.notify_readable = true
 
