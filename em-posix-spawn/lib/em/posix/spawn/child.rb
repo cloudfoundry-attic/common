@@ -277,13 +277,13 @@ module EventMachine
             @runtime = Time.now - @start
             @status = SignalHandler.instance.pid_to_process_status(@pid)
 
-            in_flight.each do |stream|
+            in_flight.each do |io|
               # Trigger final read to make sure buffer is drained
-              if stream.respond_to?(:notify_readable)
-                stream.notify_readable
+              if io.respond_to?(:notify_readable)
+                io.notify_readable
               end
 
-              stream.close
+              io.close
             end
 
             in_flight.clear
