@@ -319,6 +319,8 @@ module EventMachine
           end
 
           def close
+            return if closed?
+
             # NB: The ordering here is important. If we're using epoll,
             #     detach() attempts to deregister the associated fd via
             #     EPOLL_CTL_DEL and marks the EventableDescriptor for deletion
