@@ -358,9 +358,10 @@ class ChildTest < Test::Unit::TestCase
   # attached to the same process.
   def test_listener_nonempty_streams_active_process
     em do
-      command = "printf A; sleep 0.01"
-      command << "; printf B; sleep 0.01"
-      command << "; printf C; sleep 0.01"
+      command = ['A', 'B', 'C'].map do |e|
+        'printf %s; sleep 0.01' % e
+      end.join(';')
+
       p = Child.new(command)
 
       data = ['', '']
@@ -370,7 +371,6 @@ class ChildTest < Test::Unit::TestCase
         data[0] << data_outer
         if listener_outer.closed?
           closed[0] = true
-          done if closed[1]
         end
         unless called
           EM.next_tick do
@@ -378,7 +378,6 @@ class ChildTest < Test::Unit::TestCase
               data[1] << data_inner
               if listener_inner.closed?
                 closed[1] = true
-                done if closed[0]
               end
             end
           end
@@ -391,6 +390,7 @@ class ChildTest < Test::Unit::TestCase
         assert p.success?
         assert_equal "ABC", data[0]
         assert_equal "ABC", data[1]
+        done
       end
     end
   end
