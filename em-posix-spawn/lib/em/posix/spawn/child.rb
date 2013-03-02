@@ -243,8 +243,8 @@ module EventMachine
           # keep track of max output
           max = @max
           if max && max > 0
-            check_buffer_size = lambda { |*args|
-              if !terminated?
+            check_buffer_size = lambda { |listener, _|
+              if !terminated? && !listener.closed?
                 if @cout.buffer.size + @cerr.buffer.size > max
                   failure = MaximumOutputExceeded
                   in_flight.each(&:close)
@@ -392,6 +392,18 @@ module EventMachine
             @after_read = []
           end
 
+          def close
+            # Ensure that the listener receives the entire buffer if it
+            # attaches to the process only just before the stream is closed.
+            @after_read.each do |listener|
+              listener.close(@buffer)
+            end
+
+            @after_read.clear
+
+            super
+          end
+
           def after_read(&block)
             if block
               listener = Listener.new(@name, &block)
@@ -423,12 +435,6 @@ module EventMachine
               @after_read.each { |listener| listener.call(@buffer) }
             rescue Errno::EAGAIN, Errno::EINTR
             rescue EOFError
-              @after_read.each do |listener|
-                # Ensure that the listener receives the entire buffer if it
-                # attaches to the process only just before the stream is
-                # closed.
-                listener.close(@buffer)
-              end
               close
               set_deferred_success
             end

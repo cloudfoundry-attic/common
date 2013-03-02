@@ -276,6 +276,40 @@ class ChildTest < Test::Unit::TestCase
     end
   end
 
+  def test_listener_closed_on_exceeding_max_output
+    em do
+      p = Child.new("yes", :max => 2)
+
+      listeners = p.add_streams_listener do |listener, data|
+        if listener.closed?
+          listeners.delete(listener)
+        end
+      end
+
+      p.errback do
+        assert listeners.empty?
+        done
+      end
+    end
+  end
+
+  def test_listener_closed_on_exceeding_timeout
+    em do
+      p = Child.new("sleep 0.1", :timeout => 0.05)
+
+      listeners = p.add_streams_listener do |listener, data|
+        if listener.closed?
+          listeners.delete(listener)
+        end
+      end
+
+      p.errback do
+        assert listeners.empty?
+        done
+      end
+    end
+  end
+
   # Tests if a listener correctly receives stream updates after it attaches to a
   # process that has already finished execution without producing any output in
   # its stdout and stderr.
