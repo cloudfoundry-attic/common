@@ -350,24 +350,37 @@ module EventMachine
               @name = name
               @block = block
               @offset = 0
-              @closed = false
             end
 
-            # Sends only the update. Also ensures that duplicate calls
-            # are suppressed.
+            # Sends the part of the buffer that has not yet been sent.
             def call(buffer)
-              to_be_sent = buffer.slice(@offset..-1)
-              to_be_sent ||= ""
-              @offset = buffer.length
-              @block.call(self, to_be_sent)
+              return if @block.nil?
+
+              to_call = @block
+              to_call.call(self, slice_from_buffer(buffer))
             end
 
-            def close
-              @closed = true
+            # Sends the part of the buffer that has not yet been sent,
+            # after closing the listener. After this, the listener
+            # will not receive any more calls.
+            def close(buffer = "")
+              return if @block.nil?
+
+              to_call, @block = @block, nil
+              to_call.call(self, slice_from_buffer(buffer))
             end
 
             def closed?
-              @closed
+              @block.nil?
+            end
+
+            private
+
+            def slice_from_buffer(buffer)
+              to_be_sent = buffer.slice(@offset..-1)
+              to_be_sent ||= ""
+              @offset = buffer.length
+              to_be_sent
             end
           end
 
@@ -388,8 +401,7 @@ module EventMachine
                 # receives the entire buffer if it attaches to the process only
                 # after its completion.
                 EM.next_tick do
-                  listener.close
-                  listener.call(@buffer)
+                  listener.close(@buffer)
                 end
               elsif !@buffer.empty?
                 # If this stream's buffer is non-empty, pass it to the listener
@@ -412,11 +424,10 @@ module EventMachine
             rescue Errno::EAGAIN, Errno::EINTR
             rescue EOFError
               @after_read.each do |listener|
-                listener.close
                 # Ensure that the listener receives the entire buffer if it
                 # attaches to the process only just before the stream is
                 # closed.
-                listener.call(@buffer)
+                listener.close(@buffer)
               end
               close
               set_deferred_success
