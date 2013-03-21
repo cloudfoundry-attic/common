@@ -251,6 +251,43 @@ class ChildTest < Test::Unit::TestCase
     end
   end
 
+  # This tries to exercise faulty EventMachine behavior.
+  # EventMachine crashes when a file descriptor is attached and
+  # detached in the same event loop tick.
+  def test_short_lived_process_started_from_io_callback
+    EM.epoll
+
+    em do
+      m = Module.new do
+        def initialize(handlers)
+          @handlers = handlers
+        end
+
+        def notify_readable
+          begin
+            @io.read_nonblock(1)
+            @handlers[:readable].call
+          rescue EOFError
+            @handlers[:eof].call
+          end
+        end
+      end
+
+      r, w = IO.pipe
+
+      s = lambda do
+        Child.new("echo")
+      end
+
+      l = EM.watch(r, m, :readable => s, :eof => method(:done))
+      l.notify_readable = true
+
+      # Trigger listener (it reads one byte per tick)
+      w.write_nonblock("x" * 100)
+      w.close
+    end
+  end
+
   # Tests if expected listeners are returned by
   # Child#add_stream_listeners(&block).
   def test_add_listeners

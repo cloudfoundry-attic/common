@@ -321,17 +321,31 @@ module EventMachine
           def close
             return if closed?
 
-            # NB: The ordering here is important. If we're using epoll,
-            #     detach() attempts to deregister the associated fd via
-            #     EPOLL_CTL_DEL and marks the EventableDescriptor for deletion
-            #     upon completion of the iteration of the event loop. However,
-            #     if the fd was closed before calling detach(), epoll_ctl()
-            #     will sometimes return EBADFD and fail to remove the fd. This
-            #     can lead to epoll_wait() returning an event whose data
-            #     pointer is invalid (since it was deleted in a prior iteration
-            #     of the event loop).
-            detach
-            @io.close rescue nil
+
+            # NB: Defer detach to the next tick, because EventMachine blows up
+            #     when a file descriptor is attached and detached in the same
+            #     tick. This can happen when the child process dies in the same
+            #     tick it started, and the `#waitpid` loop in the signal
+            #     handler picks it up afterwards. The signal handler, in turn,
+            #     queues the child's callback to the executed via
+            #     `EM#next_tick`. If the blocks queued by `EM#next_tick` are
+            #     executed after that, still in the same tick, the child's file
+            #     descriptors can be detached in the same tick they were
+            #     attached.
+            EM.next_tick do
+              # NB: The ordering here is important. If we're using epoll,
+              #     detach() attempts to deregister the associated fd via
+              #     EPOLL_CTL_DEL and marks the EventableDescriptor for
+              #     deletion upon completion of the iteration of the event
+              #     loop. However, if the fd was closed before calling
+              #     detach(), epoll_ctl() will sometimes return EBADFD and fail
+              #     to remove the fd. This can lead to epoll_wait() returning
+              #     an event whose data pointer is invalid (since it was
+              #     deleted in a prior iteration of the event loop).
+              detach
+              @io.close rescue nil
+            end
+
             @closed = true
           end
 
@@ -430,6 +444,10 @@ module EventMachine
           end
 
           def notify_readable
+            # Close and detach are decoupled, check if this notification is
+            # supposed to go through.
+            return if closed?
+
             begin
               @buffer << @io.read_nonblock(BUFSIZE)
               @after_read.each { |listener| listener.call(@buffer) }
@@ -444,6 +462,10 @@ module EventMachine
         class WritableStream < Stream
 
           def notify_writable
+            # Close and detach are decoupled, check if this notification is
+            # supposed to go through.
+            return if closed?
+
             begin
               boom = nil
               size = @io.write_nonblock(@buffer)
