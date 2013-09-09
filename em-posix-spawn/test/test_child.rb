@@ -131,6 +131,17 @@ class ChildTest < Test::Unit::TestCase
     end
   end
 
+  def test_discard_output
+    em do
+      p = Child.new('echo hi', :discard_output => true)
+      p.callback do
+        assert_equal 0, p.out.size
+        assert_equal 0, p.err.size
+        done
+      end
+    end
+  end
+
   def test_max_with_child_hierarchy
     em do
       p = Child.new('/bin/sh', '-c', 'yes', :max => 100_000)

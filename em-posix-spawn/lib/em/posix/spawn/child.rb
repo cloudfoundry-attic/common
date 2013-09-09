@@ -47,6 +47,7 @@ module EventMachine
           @input = @options.delete(:input)
           @timeout = @options.delete(:timeout)
           @max = @options.delete(:max)
+          @discard_output = @options.delete(:discard_output)
           @prepend_stdout = @options.delete(:prepend_stdout) || ""
           @prepend_stderr = @options.delete(:prepend_stderr) || ""
           @options.delete(:chdir) if @options[:chdir].nil?
@@ -220,8 +221,8 @@ module EventMachine
 
           # watch fds
           @cin = EM.watch stdin, WritableStream, (@input || "").dup, "stdin"
-          @cout = EM.watch stdout, ReadableStream, @prepend_stdout, "stdout"
-          @cerr = EM.watch stderr, ReadableStream, @prepend_stderr, "stderr"
+          @cout = EM.watch stdout, ReadableStream, @prepend_stdout, "stdout", @discard_output
+          @cerr = EM.watch stderr, ReadableStream, @prepend_stderr, "stderr", @discard_output
 
           # register events
           @cin.notify_writable = true
@@ -401,8 +402,9 @@ module EventMachine
           # Maximum buffer size for reading
           BUFSIZE = (64 * 1024)
 
-          def initialize(buffer, name, &block)
+          def initialize(buffer, name, discard_output = false, &block)
             super(buffer, name, &block)
+            @discard_output = discard_output
             @after_read = []
           end
 
@@ -449,7 +451,8 @@ module EventMachine
             return if closed?
 
             begin
-              @buffer << @io.read_nonblock(BUFSIZE)
+              out = @io.read_nonblock(BUFSIZE)
+              @buffer << out unless @discard_output
               @after_read.each { |listener| listener.call(@buffer) }
             rescue Errno::EAGAIN, Errno::EINTR
             rescue EOFError
